@@ -5,7 +5,7 @@ go 1.26.1
 require (
 	github.com/depado/gorich v1.0.7
 	github.com/google/go-github/v89 v89.0.0
-	github.com/lmittmann/tint v1.1.3
+	github.com/lmittmann/tint v1.2.0
 	github.com/mattn/go-isatty v0.0.22
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
