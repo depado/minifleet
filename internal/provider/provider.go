@@ -60,11 +60,8 @@ const (
 )
 
 type ListOptions struct {
-	IncludeArchived bool
-	IncludeForks    bool
-	Topics          []string
-	Visibility      string
-	IsOrg           bool // true = use org API, false = use user API
+	Visibility string
+	IsOrg      bool // true = use org API, false = use user API
 }
 
 type ListPROptions struct {

@@ -3,7 +3,6 @@ package manifest
 import (
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/depado/minifleet/internal/provider"
@@ -144,34 +143,6 @@ func (mf *FleetManifest) GroupRepos(group string) map[string]struct{} {
 		set[n] = struct{}{}
 	}
 	return set
-}
-
-// RepoNamesSorted returns repo short names (the last path segment of
-// full_name) in sorted order, mainly for deterministic iteration in
-// diagnostics.
-func (mf *FleetManifest) RepoNamesSorted() []string {
-	if mf == nil {
-		return nil
-	}
-	names := make([]string, 0, len(mf.Repos))
-	for _, r := range mf.Repos {
-		short := r.FullName
-		if i := lastIndexByte(r.FullName, '/'); i >= 0 {
-			short = r.FullName[i+1:]
-		}
-		names = append(names, short)
-	}
-	sort.Strings(names)
-	return names
-}
-
-func lastIndexByte(s string, c byte) int {
-	for i := len(s) - 1; i >= 0; i-- {
-		if s[i] == c {
-			return i
-		}
-	}
-	return -1
 }
 
 func convertRepos(repos []*provider.Repo) []ManifestRepo {
