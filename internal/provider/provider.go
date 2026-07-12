@@ -41,11 +41,11 @@ type PullRequest struct {
 type CIStatus string
 
 const (
-	CIUnknown  CIStatus = "unknown"
-	CIPending  CIStatus = "pending"
-	CISuccess  CIStatus = "success"
-	CIFailure  CIStatus = "failure"
-	CIError    CIStatus = "error"
+	CIUnknown CIStatus = "unknown"
+	CIPending CIStatus = "pending"
+	CISuccess CIStatus = "success"
+	CIFailure CIStatus = "failure"
+	CIError   CIStatus = "error"
 )
 
 type ReviewStatus string

@@ -27,8 +27,8 @@ type runLine struct {
 
 // runResult is the payload stored on each RepoResult by the run command.
 type runResult struct {
-	ExitCode int          `json:"exit_code"`
-	Lines    []runLine    `json:"lines,omitempty"`
+	ExitCode int           `json:"exit_code"`
+	Lines    []runLine     `json:"lines,omitempty"`
 	Duration time.Duration `json:"duration"`
 }
 
@@ -37,8 +37,8 @@ type runMode int
 
 const (
 	modeAuto    runMode = iota // TTY → live blocks, non-TTY → summary
-	modeLive                  // force live block display
-	modeSummary               // force summary (capture + print per repo)
+	modeLive                   // force live block display
+	modeSummary                // force summary (capture + print per repo)
 )
 
 func newRunCmd() *cobra.Command {
@@ -239,7 +239,7 @@ Examples:
 // process are appended in arrival order, not arbitrarily interleaved by the
 // Go runtime's pipe-reader scheduling.
 type styledLineWriter struct {
-	mu       sync.Mutex // protects this writer's partial-line buffer
+	mu       sync.Mutex  // protects this writer's partial-line buffer
 	orderMu  *sync.Mutex // shared between stdout+stderr writers for the same repo
 	buf      []byte
 	stream   string // "stdout" or "stderr"

@@ -133,5 +133,3 @@ func convertRepo(r *gogithub.Repository) *provider.Repo {
 		CreatedAt:     r.GetCreatedAt().Time,
 	}
 }
-
-

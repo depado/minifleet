@@ -130,7 +130,7 @@ func newPRsCmd() *cobra.Command {
 }
 
 type prRow struct {
-	Repo string `json:"repo"`
+	Repo string                `json:"repo"`
 	PR   *provider.PullRequest `json:"pr"`
 }
 

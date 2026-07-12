@@ -44,8 +44,9 @@ func (c *Client) Host() string { return c.host }
 
 // CloneURL returns the git clone URL for a repo identified by its full name
 // ("owner/repo"), using "ssh" or "https". GitHub's format:
-//   ssh:   git@<host>:owner/repo.git
-//   https: https://<host>/owner/repo.git
+//
+//	ssh:   git@<host>:owner/repo.git
+//	https: https://<host>/owner/repo.git
 func (c *Client) CloneURL(protocol, fullName string) string {
 	if protocol == "https" {
 		return fmt.Sprintf("https://%s/%s.git", c.host, fullName)

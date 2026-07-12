@@ -129,4 +129,3 @@ func loadFleetManifest(t fleetTarget) *manifest.FleetManifest {
 	mf, _ := manifest.Load(manifest.Path(t.Dir))
 	return mf
 }
-

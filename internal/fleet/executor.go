@@ -173,15 +173,15 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 
 					if p != nil && slotIdx < len(slots) {
 						p.ResetTask(slots[slotIdx], false)
-var desc string
-					switch status {
-					case StatusSuccess:
-						desc = fmt.Sprintf("[green]%s[/]", task.RepoName)
-					case StatusSkipped:
-						desc = fmt.Sprintf("[dim]%s ↷[/]", task.RepoName)
-					case StatusFailed:
-						desc = fmt.Sprintf("[red]%s[/]", task.RepoName)
-					}
+						var desc string
+						switch status {
+						case StatusSuccess:
+							desc = fmt.Sprintf("[green]%s[/]", task.RepoName)
+						case StatusSkipped:
+							desc = fmt.Sprintf("[dim]%s ↷[/]", task.RepoName)
+						case StatusFailed:
+							desc = fmt.Sprintf("[red]%s[/]", task.RepoName)
+						}
 						p.Update(slots[slotIdx], progress.TaskUpdateConfig{Description: ptr(desc)})
 						if len(taskCh) > 0 {
 							time.Sleep(300 * time.Millisecond)

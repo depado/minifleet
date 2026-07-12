@@ -204,19 +204,19 @@ func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner stri
 }
 
 type syncJSONResult struct {
-	Owner    string `json:"owner"`
-	Total    int    `json:"total"`
-	Succeeded int   `json:"succeeded"`
-	Skipped   int   `json:"skipped"`
-	Failed    int   `json:"failed"`
-	Elapsed   string `json:"elapsed"`
+	Owner     string           `json:"owner"`
+	Total     int              `json:"total"`
+	Succeeded int              `json:"succeeded"`
+	Skipped   int              `json:"skipped"`
+	Failed    int              `json:"failed"`
+	Elapsed   string           `json:"elapsed"`
 	Results   []syncRepoResult `json:"results,omitempty"`
 }
 
 type syncRepoResult struct {
-	Repo    string `json:"repo"`
-	Status  string `json:"status"`
-	Error   string `json:"error,omitempty"`
+	Repo   string `json:"repo"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
 }
 
 func outputSyncJSON(results []fleet.BulkResult) error {
