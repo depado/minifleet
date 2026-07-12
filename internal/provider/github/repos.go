@@ -10,6 +10,8 @@ import (
 )
 
 func (c *Client) ListRepos(ctx context.Context, owner string, opts provider.ListOptions) ([]*provider.Repo, error) {
+	ctx = withRateLimitRetry(ctx)
+
 	var allRepos []*gogithub.Repository
 	var err error
 
@@ -104,6 +106,8 @@ func listByUser(ctx context.Context, c *Client, user string) ([]*gogithub.Reposi
 // or a user (false). Uses a single lightweight GET to /orgs/{owner}; any
 // non-404 error is returned as-is.
 func (c *Client) DetectOwner(ctx context.Context, owner string) (bool, error) {
+	ctx = withRateLimitRetry(ctx)
+
 	_, resp, err := c.client.Organizations.Get(ctx, owner)
 	if err == nil {
 		return true, nil

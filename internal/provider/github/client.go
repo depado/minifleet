@@ -1,6 +1,7 @@
 package github
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -52,4 +53,10 @@ func (c *Client) CloneURL(protocol, fullName string) string {
 		return fmt.Sprintf("https://%s/%s.git", c.host, fullName)
 	}
 	return fmt.Sprintf("git@%s:%s.git", c.host, fullName)
+}
+
+// withRateLimitRetry decorates ctx so the go-github client sleeps until the
+// primary rate-limit window resets and retries, rather than returning an error.
+func withRateLimitRetry(ctx context.Context) context.Context {
+	return context.WithValue(ctx, gogithub.SleepUntilPrimaryRateLimitResetWhenRateLimited, true)
 }

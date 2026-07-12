@@ -3,12 +3,15 @@ package github
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/depado/minifleet/internal/provider"
 	gogithub "github.com/google/go-github/v89/github"
 )
 
 func (c *Client) ListPullRequests(ctx context.Context, owner, repoName string, opts provider.ListPROptions) ([]*provider.PullRequest, error) {
+	ctx = withRateLimitRetry(ctx)
+
 	listOpts := &gogithub.PullRequestListOptions{
 		State:       opts.State,
 		Sort:        opts.Sort,
@@ -69,6 +72,7 @@ func (c *Client) getCIStatus(ctx context.Context, owner, repo, sha string) provi
 
 	combined, _, err := c.client.Repositories.GetCombinedStatus(ctx, owner, repo, sha, nil)
 	if err != nil {
+		slog.Debug("ci status fetch failed", "repo", owner+"/"+repo, "sha", sha, "error", err)
 		return provider.CIUnknown
 	}
 
@@ -88,7 +92,11 @@ func (c *Client) getCIStatus(ctx context.Context, owner, repo, sha string) provi
 
 func (c *Client) getReviewStatus(ctx context.Context, owner, repo string, number int) provider.ReviewStatus {
 	reviews, _, err := c.client.PullRequests.ListReviews(ctx, owner, repo, number, nil)
-	if err != nil || len(reviews) == 0 {
+	if err != nil {
+		slog.Debug("review fetch failed", "repo", owner+"/"+repo, "pr", number, "error", err)
+		return provider.ReviewPending
+	}
+	if len(reviews) == 0 {
 		return provider.ReviewPending
 	}
 
