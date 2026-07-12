@@ -150,7 +150,7 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 
 					if p != nil && slotIdx < len(slots) {
 						p.Update(slots[slotIdx], progress.TaskUpdateConfig{
-							Description: ptr(fmt.Sprintf("[cyan]%s[/]", task.RepoName)),
+							Description: new(fmt.Sprintf("[cyan]%s[/]", task.RepoName)),
 						})
 					}
 
@@ -182,10 +182,10 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 						case StatusFailed:
 							desc = fmt.Sprintf("[red]%s[/]", task.RepoName)
 						}
-						p.Update(slots[slotIdx], progress.TaskUpdateConfig{Description: ptr(desc)})
+						p.Update(slots[slotIdx], progress.TaskUpdateConfig{Description: new(desc)})
 						if len(taskCh) > 0 {
 							time.Sleep(300 * time.Millisecond)
-							p.Update(slots[slotIdx], progress.TaskUpdateConfig{Description: ptr("[dim]idle[/]")})
+							p.Update(slots[slotIdx], progress.TaskUpdateConfig{Description: new("[dim]idle[/]")})
 						}
 					}
 
@@ -226,5 +226,3 @@ func isSkipError(err error) bool {
 	_, ok := err.(*SkipError)
 	return ok
 }
-
-func ptr[T any](v T) *T { return &v }

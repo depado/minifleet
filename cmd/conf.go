@@ -85,7 +85,7 @@ func NewLogger(c *Conf) *slog.Logger {
 		if strings.EqualFold(c.Log.Color, "auto") || c.Log.Color == "" {
 			noColor = !isatty.IsTerminal(os.Stderr.Fd())
 		}
-		handler = tint.NewHandler(os.Stderr, &tint.Options{
+		handler = tint.NewTextHandler(os.Stderr, &tint.Options{
 			Level: level, AddSource: c.Log.Source, TimeFormat: time.DateTime, NoColor: noColor,
 		})
 	default:
