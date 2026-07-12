@@ -579,8 +579,7 @@ minifleet/
 │   ├── list.go
 │   ├── status.go
 │   ├── prs.go
-│   ├── run.go                 # execute shell command across repos
-│   ├── run_live.go            # gorich live block display for run --summary=false
+│   ├── run.go                 # execute shell command across repos + gorich live block display
 │   └── version.go
 ├── internal/
 │   ├── provider/              # Provider interface (Host, CloneURL, ListRepos, ...)
@@ -589,7 +588,6 @@ minifleet/
 │   ├── fleet/                # Executor (bounded concurrency) + Scanner (flat)
 │   ├── manifest/             # Single-owner YAML manifest (load/save/merge/generate)
 │   └── ui/                   # gorich table helpers
-└── docs/                     # Research reports and implementation plan
 ```
 
 ### Design principles
