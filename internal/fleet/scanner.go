@@ -49,9 +49,13 @@ func Scan(fleetDir string, targetRegex string, mf *manifest.FleetManifest) ([]Re
 			continue
 		}
 
+		id := byShort[name]
+		if id == "" {
+			id = name
+		}
 		tasks = append(tasks, RepoTask{
 			RepoName: name,
-			ID:       repoDir,
+			ID:       id,
 			FullName: byShort[name],
 			Dir:      repoDir,
 		})

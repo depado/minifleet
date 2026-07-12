@@ -100,7 +100,7 @@ Examples:
 				}
 				tasksWithName := make([]taskWithName, len(tasks))
 				for i, tk := range tasks {
-					tasksWithName[i] = taskWithName{RepoName: tk.RepoName, FullName: tk.FullName, ID: tk.ID}
+					tasksWithName[i] = taskWithName{RepoName: tk.RepoName, FullName: tk.FullName, ID: tk.ID, Dir: tk.Dir}
 				}
 				tasksWithName, err = filters.ApplyTasks(tasksWithName, mf)
 				if err != nil {
@@ -108,7 +108,7 @@ Examples:
 				}
 				filtered := make([]fleet.RepoTask, len(tasksWithName))
 				for i, tn := range tasksWithName {
-					filtered[i] = fleet.RepoTask{RepoName: tn.RepoName, ID: tn.ID, FullName: tn.FullName, Dir: tn.ID}
+					filtered[i] = fleet.RepoTask{RepoName: tn.RepoName, ID: tn.ID, FullName: tn.FullName, Dir: tn.Dir}
 				}
 				if len(filtered) == 0 {
 					continue
@@ -129,7 +129,7 @@ Examples:
 						ui.DefaultPrint(fmt.Sprintf("[bold]%s[/] [dim](%s)[/]", p.target.Owner, p.target.Dir))
 					}
 					for _, t := range p.tasks {
-						ui.DefaultPrint(fmt.Sprintf("  [dim]%s[/]  [dim]%s[/]", t.RepoName, t.ID))
+						ui.DefaultPrint(fmt.Sprintf("  [dim]%s[/]  [dim]%s[/]", t.RepoName, t.Dir))
 					}
 				}
 				return nil
@@ -286,7 +286,7 @@ func (w *styledLineWriter) Write(p []byte) (int, error) {
 func runOneRepo(ctx context.Context, task fleet.RepoTask, input, shell string, useLive, jsonMode bool, display *live.BlockDisplay) (any, error) {
 	start := time.Now()
 	c := exec.CommandContext(ctx, shell, "-c", input)
-	c.Dir = task.ID
+	c.Dir = task.Dir
 	c.Env = os.Environ()
 
 	res := &runResult{Duration: time.Since(start)}

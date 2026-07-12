@@ -179,6 +179,7 @@ type taskWithName struct {
 	RepoName string
 	FullName string
 	ID       string
+	Dir      string
 }
 
 type labelFilter struct {

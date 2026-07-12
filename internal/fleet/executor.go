@@ -11,10 +11,10 @@ import (
 )
 
 type RepoTask struct {
-	RepoName string
-	ID       string
-	FullName string // owner/repo when known; empty for local-only scans
-	Dir      string // local filesystem path (for run/exec); optional
+	RepoName string // short repo name (directory name / API name)
+	ID       string // stable identity: "owner/repo" when known, else RepoName
+	FullName string // "owner/repo" when known; empty for local-only scans
+	Dir      string // local filesystem path — the sole path used for git/exec
 }
 
 type RepoResult struct {

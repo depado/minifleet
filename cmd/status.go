@@ -82,7 +82,7 @@ func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters
 
 	tasksWithName := make([]taskWithName, len(tasks))
 	for i, tk := range tasks {
-		tasksWithName[i] = taskWithName{RepoName: tk.RepoName, FullName: tk.FullName, ID: tk.ID}
+		tasksWithName[i] = taskWithName{RepoName: tk.RepoName, FullName: tk.FullName, ID: tk.ID, Dir: tk.Dir}
 	}
 	tasksWithName, err = f.ApplyTasks(tasksWithName, mf)
 	if err != nil {
@@ -91,7 +91,7 @@ func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters
 
 	filtered := make([]fleet.RepoTask, len(tasksWithName))
 	for i, tn := range tasksWithName {
-		filtered[i] = fleet.RepoTask{RepoName: tn.RepoName, ID: tn.ID, FullName: tn.FullName}
+		filtered[i] = fleet.RepoTask{RepoName: tn.RepoName, ID: tn.ID, FullName: tn.FullName, Dir: tn.Dir}
 	}
 
 	if len(filtered) == 0 {
@@ -104,7 +104,7 @@ func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters
 	})
 
 	result := exec.Run(ctx, filtered, func(ctx context.Context, task fleet.RepoTask) (any, error) {
-		status, err := git.Status(ctx, task.ID)
+		status, err := git.Status(ctx, task.Dir)
 		if err != nil {
 			return nil, err
 		}
