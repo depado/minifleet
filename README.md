@@ -3,7 +3,18 @@
 </p>
 
 <p align="center">
-  Sync, observe, and operate on 100+ repositories — with progress bars, unified filters, and concurrency built in.
+  Sync, observe, and operate on all your repositories with progress bars, unified filters, and concurrency built in.
+</p>
+
+<p align="center">
+  <a href="https://github.com/depado/minifleet/actions"><img src="https://shieldcn.dev/github/ci/depado/minifleet.svg?variant=branded" alt="CI" /></a>
+  <a href="https://github.com/depado/minifleet/releases"><img src="https://shieldcn.dev/github/release/depado/minifleet.svg?variant=branded" alt="Release" /></a>
+  <a href="https://github.com/depado/minifleet/blob/main/LICENSE"><img src="https://shieldcn.dev/github/license/depado/minifleet.svg?variant=branded" alt="License" /></a>
+  <a href="https://github.com/depado/minifleet"><img src="https://shieldcn.dev/github/last-commit/depado/minifleet.svg?variant=branded" alt="Last Commit" /></a>
+  <a href="https://github.com/depado/minifleet"><img src="https://shieldcn.dev/github/stars/depado/minifleet.svg?variant=branded" alt="Stars" /></a>
+  <a href="https://github.com/depado/minifleet/graphs/contributors"><img src="https://shieldcn.dev/github/contributors/depado/minifleet.svg?variant=branded" alt="Contributors" /></a>
+  <a href="https://github.com/depado/minifleet/issues"><img src="https://shieldcn.dev/github/issues/depado/minifleet.svg?variant=branded" alt="Issues" /></a>
+  <a href="https://github.com/depado/minifleet/pkgs/container/minifleet"><img src="https://shieldcn.dev/badge/container-ghcr.io%2Fdepado%2Fminifleet-2496ED.svg?logo=docker&variant=branded" alt="container image" /></a>
 </p>
 
 > [!WARNING]
@@ -358,16 +369,16 @@ Commands discover the active fleet(s) in this order:
 
 Every command accepts the same filter flags so users get a consistent vocabulary:
 
-| Flag | Type | Behavior |
-|------|------|----------|
-| `--target` / `-t` | regex | Match on repo name (or local directory name for `status`) |
-| `--topic` | stringArray | Match if repo has any of the given topics (OR) |
-| `--include-archived` | bool | Include archived repos (excluded by default) |
-| `--include-forks` | bool | Include forked repos (excluded by default) |
-| `--visibility` | string | `all` (default), `public`, `private` |
-| `--language` | string | Match on repo primary language (e.g. `go`, `python`) |
-| `--label` | stringArray | Match on manifest labels: `tier=1` (exact) or `tier` (any value). AND across labels. |
-| `--group` | string | Limit to repos in a manifest group |
+| Flag                 | Type        | Behavior                                                                             |
+| -------------------- | ----------- | ------------------------------------------------------------------------------------ |
+| `--target` / `-t`    | regex       | Match on repo name (or local directory name for `status`)                            |
+| `--topic`            | stringArray | Match if repo has any of the given topics (OR)                                       |
+| `--include-archived` | bool        | Include archived repos (excluded by default)                                         |
+| `--include-forks`    | bool        | Include forked repos (excluded by default)                                           |
+| `--visibility`       | string      | `all` (default), `public`, `private`                                                 |
+| `--language`         | string      | Match on repo primary language (e.g. `go`, `python`)                                 |
+| `--label`            | stringArray | Match on manifest labels: `tier=1` (exact) or `tier` (any value). AND across labels. |
+| `--group`            | string      | Limit to repos in a manifest group                                                   |
 
 Filters compose freely:
 
@@ -448,11 +459,11 @@ repos:
 
 ### Field ownership
 
-| Category | Fields | Owner |
-|----------|--------|-------|
-| API-tracked | `topics`, `language`, `archived`, `fork`, `private`, `updated_at` | `sync` overwrites from API |
-| User-set | `labels`, `protocol`, `ignored` | User — never touched by `sync` |
-| User-set | `groups` | User — never touched by `sync` |
+| Category    | Fields                                                            | Owner                          |
+| ----------- | ----------------------------------------------------------------- | ------------------------------ |
+| API-tracked | `topics`, `language`, `archived`, `fork`, `private`, `updated_at` | `sync` overwrites from API     |
+| User-set    | `labels`, `protocol`, `ignored`                                   | User — never touched by `sync` |
+| User-set    | `groups`                                                          | User — never touched by `sync` |
 
 ### Groups
 
@@ -479,22 +490,22 @@ All settings can be set via CLI flags, environment variables, or a config file. 
 
 ```yaml
 github:
-  token: ""           # GitHub PAT (or use GITHUB_TOKEN env)
-  host: github.com    # Use a custom host for GitHub Enterprise
+  token: "" # GitHub PAT (or use GITHUB_TOKEN env)
+  host: github.com # Use a custom host for GitHub Enterprise
 
 fleet:
-  base: ~/dev          # Base directory for default fleet layout ({base}/{host}/{owner})
-  path: ""             # (optional) one-shot override; bypass discovery
-  shallow: false       # Use shallow clones by default
-  concurrent: 5        # Max concurrent operations
-  known_fleets:        # owner → directory of registered fleets
+  base: ~/dev # Base directory for default fleet layout ({base}/{host}/{owner})
+  path: "" # (optional) one-shot override; bypass discovery
+  shallow: false # Use shallow clones by default
+  concurrent: 5 # Max concurrent operations
+  known_fleets: # owner → directory of registered fleets
     depado: /home/depado/dev/github.com/depado
 
 log:
-  level: info          # debug, info, warn, error
-  format: text         # json or text
+  level: info # debug, info, warn, error
+  format: text # json or text
   source: false
-  color: auto          # auto, always, never
+  color: auto # auto, always, never
 
 ui:
   progress: true
@@ -503,21 +514,21 @@ ui:
 
 ### Reference
 
-| Key | Env | Default | Description |
-|-----|-----|---------|-------------|
-| `github.token` | `GITHUB_TOKEN` | - | GitHub personal access token |
-| `github.host` | `MINIFLEET_GITHUB_HOST` | `github.com` | GitHub host (GHE: `github.example.com`) |
-| `fleet.base` | `MINIFLEET_FLEET_BASE` | `~/dev` | Base directory for default fleet layout |
-| `fleet.path` | `MINIFLEET_FLEET_PATH` | - | One-shot directory override |
-| `fleet.shallow` | `MINIFLEET_FLEET_SHALLOW` | `false` | Use shallow clones |
-| `fleet.concurrent` | `MINIFLEET_FLEET_CONCURRENT` | `5` | Max concurrent operations |
-| `fleet.known_fleets` | - | - | Map of owner → fleet directory (managed by `sync`) |
-| `log.level` | `MINIFLEET_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-| `log.format` | `MINIFLEET_LOG_FORMAT` | `text` | `json` or `text` |
-| `log.source` | `MINIFLEET_LOG_SOURCE` | `false` | Include source file in logs |
-| `log.color` | `MINIFLEET_LOG_COLOR` | `auto` | `auto`, `always`, `never` |
-| `ui.progress` | `MINIFLEET_UI_PROGRESS` | `true` | Show progress bars |
-| `ui.color` | `MINIFLEET_UI_COLOR` | `true` | Enable colored output |
+| Key                  | Env                          | Default      | Description                                        |
+| -------------------- | ---------------------------- | ------------ | -------------------------------------------------- |
+| `github.token`       | `GITHUB_TOKEN`               | -            | GitHub personal access token                       |
+| `github.host`        | `MINIFLEET_GITHUB_HOST`      | `github.com` | GitHub host (GHE: `github.example.com`)            |
+| `fleet.base`         | `MINIFLEET_FLEET_BASE`       | `~/dev`      | Base directory for default fleet layout            |
+| `fleet.path`         | `MINIFLEET_FLEET_PATH`       | -            | One-shot directory override                        |
+| `fleet.shallow`      | `MINIFLEET_FLEET_SHALLOW`    | `false`      | Use shallow clones                                 |
+| `fleet.concurrent`   | `MINIFLEET_FLEET_CONCURRENT` | `5`          | Max concurrent operations                          |
+| `fleet.known_fleets` | -                            | -            | Map of owner → fleet directory (managed by `sync`) |
+| `log.level`          | `MINIFLEET_LOG_LEVEL`        | `info`       | `debug`, `info`, `warn`, `error`                   |
+| `log.format`         | `MINIFLEET_LOG_FORMAT`       | `text`       | `json` or `text`                                   |
+| `log.source`         | `MINIFLEET_LOG_SOURCE`       | `false`      | Include source file in logs                        |
+| `log.color`          | `MINIFLEET_LOG_COLOR`        | `auto`       | `auto`, `always`, `never`                          |
+| `ui.progress`        | `MINIFLEET_UI_PROGRESS`      | `true`       | Show progress bars                                 |
+| `ui.color`           | `MINIFLEET_UI_COLOR`         | `true`       | Enable colored output                              |
 
 ## Concurrency
 
