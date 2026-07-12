@@ -15,6 +15,7 @@ COPY . .
 RUN make
 
 # Final Step
-FROM gcr.io/distroless/static@sha256:3592aa8171c77482f62bbc4164e6a2d141c6122554ace66e5cc910cadb961ff0
-COPY --from=builder /app/minifleet /go/bin/minifleet
-ENTRYPOINT ["/go/bin/minifleet"]
+FROM alpine:3.21
+RUN apk add --no-cache git openssh-client ca-certificates
+COPY --from=builder /app/minifleet /usr/local/bin/minifleet
+ENTRYPOINT ["/usr/local/bin/minifleet"]
