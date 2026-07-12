@@ -3,7 +3,14 @@
 </p>
 
 <p align="center">
-  Small local-first fleet management tool for your repositories
+  <a href="https://github.com/depado/minifleet/actions"><img src="https://shieldcn.dev/github/ci/depado/buoy.svg?variant=branded" alt="CI" /></a>
+  <a href="https://github.com/depado/minifleet/releases"><img src="https://shieldcn.dev/github/release/depado/buoy.svg?variant=branded" alt="Release" /></a>
+  <a href="https://github.com/depado/minifleet/blob/main/LICENSE"><img src="https://shieldcn.dev/github/license/depado/buoy.svg?variant=branded" alt="License" /></a>
+  <a href="https://github.com/depado/minifleet"><img src="https://shieldcn.dev/github/last-commit/depado/buoy.svg?variant=branded" alt="Last Commit" /></a>
+  <a href="https://github.com/depado/minifleet"><img src="https://shieldcn.dev/github/stars/depado/buoy.svg?variant=branded" alt="Stars" /></a>
+  <a href="https://github.com/depado/minifleet/graphs/contributors"><img src="https://shieldcn.dev/github/contributors/depado/buoy.svg?variant=branded" alt="Contributors" /></a>
+  <a href="https://github.com/depado/minifleet/issues"><img src="https://shieldcn.dev/github/issues/depado/buoy.svg?variant=branded" alt="Issues" /></a>
+  <a href="https://github.com/depado/minifleet/pkgs/container/buoy"><img src="https://shieldcn.dev/badge/container-ghcr.io%2Fdepado%2Fbuoy-2496ED.svg?logo=docker&variant=branded" alt="container image" /></a>
 </p>
 
 > [!WARNING]
