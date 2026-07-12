@@ -141,7 +141,7 @@ func (f Filters) ApplyTasks(tasks []taskWithName, mf *manifest.FleetManifest) ([
 			if len(labelFilters) > 0 || groupSet != nil {
 				continue
 			}
-			if f.IncludeArchived || f.IncludeForks || len(f.Topics) > 0 || f.Language != "" {
+			if len(f.Topics) > 0 || f.Language != "" {
 				continue
 			}
 		} else {

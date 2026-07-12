@@ -64,6 +64,52 @@ func TestFiltersApply(t *testing.T) {
 	}
 }
 
+func TestApplyTasks(t *testing.T) {
+	tasks := []taskWithName{
+		{RepoName: "svc-api", FullName: "o/svc-api", ID: "/x/svc-api"},
+		{RepoName: "loose", FullName: "", ID: "/x/loose"},
+		{RepoName: "old-thing", FullName: "o/old-thing", ID: "/x/old-thing"},
+	}
+	mf := &manifest.FleetManifest{
+		Version: "1",
+		Owner:   "o",
+		Groups:  map[string][]string{"backend": {"o/svc-api"}},
+		Repos: []manifest.ManifestRepo{
+			{FullName: "o/svc-api", Language: "Go", Archived: false, Labels: map[string]string{"tier": "1"}},
+			{FullName: "o/old-thing", Language: "Python", Archived: true, Labels: map[string]string{"tier": "3"}},
+		},
+	}
+	tests := []struct {
+		name string
+		f    Filters
+		want []string
+	}{
+		{"defaults include loose+svc", Filters{}, []string{"svc-api", "loose"}},
+		{"include-archived keeps loose", Filters{IncludeArchived: true}, []string{"svc-api", "loose", "old-thing"}},
+		{"language go drops loose", Filters{Language: "Go"}, []string{"svc-api"}},
+		{"label tier drops loose", Filters{Labels: []string{"tier"}}, []string{"svc-api"}},
+		{"group backend drops loose", Filters{Group: "backend"}, []string{"svc-api"}},
+		{"archived excluded by default", Filters{}, []string{"svc-api", "loose"}},
+		{"include-archived includes manifest archived", Filters{IncludeArchived: true}, []string{"svc-api", "loose", "old-thing"}},
+		{"label tier=3 on archived needs include-archived", Filters{Labels: []string{"tier=3"}, IncludeArchived: true}, []string{"old-thing"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.f.ApplyTasks(tasks, mf)
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			names := make([]string, 0, len(got))
+			for _, g := range got {
+				names = append(names, g.RepoName)
+			}
+			if !equalSets(names, tt.want) {
+				t.Errorf("got %v, want %v", names, tt.want)
+			}
+		})
+	}
+}
+
 func equalSets(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
