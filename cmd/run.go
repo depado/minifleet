@@ -188,6 +188,9 @@ Examples:
 				result := executor.Run(ctx, p.tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
 					return runOneRepo(ctx, task, input, shell, useLive, jsonMode, display)
 				})
+				if !useLive && !jsonMode {
+					printRunSummary(result)
+				}
 				globalResult.Succeeded += result.Succeeded
 				globalResult.Skipped += result.Skipped
 				globalResult.Failed += result.Failed
@@ -204,9 +207,6 @@ Examples:
 				return outputRunJSON(&globalResult)
 			}
 
-			if !useLive {
-				printRunSummary(&globalResult)
-			}
 			ui.PrintInfo(fmt.Sprintf("Completed: %d succeeded, %d skipped, %d failed in %s",
 				globalResult.Succeeded, globalResult.Skipped, globalResult.Failed, globalResult.Elapsed.Round(time.Millisecond)))
 			return nil
