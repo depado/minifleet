@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -18,12 +18,15 @@ import (
 )
 
 func newSyncCmd() *cobra.Command {
-	var filters Filters
+	var (
+		filters Filters
+		format  string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "sync [owner]",
 		Short: "Clone missing repos and pull existing ones",
-		Long:  "Sync repositories for a GitHub user or organization.\nIf no owner is given, syncs all owners in the fleet manifest.",
+		Long:  "Sync repositories for a GitHub user or organization.\nIf no owner is given, syncs the fleet in CWD (or all known fleets if not in one).",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, err := confFromCtx(cmd)
@@ -34,35 +37,66 @@ func newSyncCmd() *cobra.Command {
 			ctx := cmd.Context()
 			prov := github.New(conf.GitHub.Token, conf.GitHub.Host)
 
-			if len(args) == 0 {
-				return syncAll(ctx, conf, prov, filters)
+			var results []fleet.BulkResult
+			collect := func(r *fleet.BulkResult) {
+				if format == "json" {
+					results = append(results, *r)
+				}
 			}
-			return syncOne(ctx, conf, prov, args[0], filters)
+
+			if len(args) == 0 {
+				err = syncAll(ctx, conf, prov, filters, format, collect)
+			} else {
+				err = syncOne(ctx, conf, prov, args[0], filters, format, collect)
+			}
+			if err != nil {
+				return err
+			}
+
+			if format == "json" {
+				return outputSyncJSON(results)
+			}
+			return nil
 		},
 	}
 
 	addFilterFlags(cmd, &filters)
+	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json")
 
 	return cmd
 }
 
-func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, f Filters) error {
-	mf, _ := manifest.Load(manifest.ManifestPath())
-	if mf == nil || len(mf.Owners) == 0 {
-		ui.PrintDim("No owners in fleet manifest. Run 'minifleet sync <owner>' first.")
+func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, f Filters, format string, collect func(*fleet.BulkResult)) error {
+	targets := discoverFleets(conf)
+	if len(targets) == 0 {
+		if format != "json" {
+			ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet sync <owner>' first.")
+		}
 		return nil
 	}
 
-	for _, owner := range mf.OwnerNames() {
-		if err := syncOne(ctx, conf, prov, owner, f); err != nil {
+	for _, t := range targets {
+		if err := syncOne(ctx, conf, prov, t.Owner, f, format, collect); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner string, f Filters) error {
-	mf, _ := manifest.Load(manifest.ManifestPath())
+func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner string, f Filters, format string, collect func(*fleet.BulkResult)) error {
+	host := prov.Host()
+	target, _ := resolveFleet(conf, host, owner)
+
+	if target.Dir == "" {
+		return fmt.Errorf("could not resolve fleet directory for %s (no --fleet.path, CWD, or known_fleets entry)", owner)
+	}
+
+	mf := loadFleetManifest(target)
+	if mf != nil && mf.Owner != "" && mf.Owner != owner {
+		dir := filepath.Join(conf.Fleet.Base, host, owner)
+		target = fleetTarget{Owner: owner, Dir: dir}
+		mf = loadFleetManifest(target)
+	}
 
 	isOrg, err := prov.DetectOwner(ctx, owner)
 	if err != nil {
@@ -82,33 +116,38 @@ func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner stri
 		return err
 	}
 	if len(repos) == 0 {
-		ui.PrintDim(fmt.Sprintf("No repositories found for %s", owner))
+		if format != "json" {
+			ui.PrintDim(fmt.Sprintf("No repositories found for %s", owner))
+		}
 		return nil
 	}
 
 	mf = manifest.Merge(mf, owner, repos)
 	idx := mf.Index()
 
-	ownerDir := computeOwnerDir(conf, prov.Host(), owner, mf)
+	if err := os.MkdirAll(target.Dir, 0o755); err != nil {
+		return fmt.Errorf("create fleet dir: %w", err)
+	}
+
 	shallow := conf.Fleet.Shallow
 
 	tasks := make([]fleet.RepoTask, len(repos))
-	repoDirs := make(map[string]string, len(repos))
 	for i, r := range repos {
+		dir := filepath.Join(target.Dir, r.Name)
 		tasks[i] = fleet.RepoTask{RepoName: r.Name, ID: r.FullName, FullName: r.FullName}
-		repoDirs[r.FullName] = repoDir(r.FullName, ownerDir, idx)
+		tasks[i].Dir = dir
 	}
 
 	exec := fleet.NewExecutor(fleet.ExecutorConfig{
 		Concurrency: conf.Fleet.Concurrent,
-		Progress:    conf.UI.Progress,
+		Progress:    conf.UI.Progress && format != "json",
 		ProgressConfig: fleet.ProgressConfig{
 			Description: fmt.Sprintf("Syncing %s", owner),
 		},
 	})
 
 	result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
-		dir := repoDirs[task.ID]
+		dir := task.Dir
 
 		if git.IsRepo(dir) {
 			if mr := idx[task.ID]; mr != nil && mr.Ignored {
@@ -130,7 +169,6 @@ func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner stri
 			if err := git.Clone(ctx, url, dir, shallow); err != nil {
 				return nil, err
 			}
-			setRepoPath(idx, task.ID, dir)
 			return nil, nil
 		}
 
@@ -145,58 +183,81 @@ func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner stri
 			protocol = "https"
 		}
 		setProtocol(idx, task.ID, protocol)
-		setRepoPath(idx, task.ID, dir)
 		return nil, nil
 	})
 
 	if result.Succeeded > 0 || result.Skipped > 0 {
-		if err := os.MkdirAll(ownerDir, 0o755); err != nil {
-			return fmt.Errorf("create dir: %w", err)
+		_ = manifest.Save(mf, manifest.Path(target.Dir))
+		if err := RegisterFleet(conf, owner, target.Dir); err != nil {
+			if format != "json" {
+				ui.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
+			}
 		}
-		_ = manifest.Save(mf, manifest.ManifestPath())
 	}
 
-	printBulkSummary(result, false)
+	collect(result)
+
+	if format != "json" {
+		printBulkSummary(result, false)
+	}
 	return nil
 }
 
-// computeOwnerDir resolves where this owner's repos are cloned.
-// When --path is set, it bypasses host/owner nesting entirely.
-func computeOwnerDir(conf *Conf, host, owner string, mf *manifest.FleetManifest) string {
-	if conf.Fleet.Path != "" {
-		return expandPath(conf.Fleet.Path)
-	}
-	defaultOwnerDir := filepath.Join(conf.Fleet.Base, host, owner)
-	if entry, ok := mf.Owners[owner]; ok && entry.Path != "" {
-		return expandPath(entry.Path)
-	}
-	return defaultOwnerDir
+type syncJSONResult struct {
+	Owner    string `json:"owner"`
+	Total    int    `json:"total"`
+	Succeeded int   `json:"succeeded"`
+	Skipped   int   `json:"skipped"`
+	Failed    int   `json:"failed"`
+	Elapsed   string `json:"elapsed"`
+	Results   []syncRepoResult `json:"results,omitempty"`
 }
 
-func repoDir(fullName, defaultOwnerDir string, idx map[string]*manifest.ManifestRepo) string {
-	if r := idx[fullName]; r != nil && r.Path != "" {
-		return expandPath(r.Path)
-	}
-	parts := strings.SplitN(fullName, "/", 2)
-	return filepath.Join(defaultOwnerDir, parts[len(parts)-1])
+type syncRepoResult struct {
+	Repo    string `json:"repo"`
+	Status  string `json:"status"`
+	Error   string `json:"error,omitempty"`
 }
 
-func expandPath(p string) string {
-	if strings.HasPrefix(p, "~/") {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, p[2:])
+func outputSyncJSON(results []fleet.BulkResult) error {
+	out := make([]syncJSONResult, 0, len(results))
+	for _, r := range results {
+		jr := syncJSONResult{
+			Total:     r.Total,
+			Succeeded: r.Succeeded,
+			Skipped:   r.Skipped,
+			Failed:    r.Failed,
+			Elapsed:   r.Elapsed.Round(0).String(),
+		}
+		for _, res := range r.Results {
+			status := "succeeded"
+			switch res.Status {
+			case fleet.StatusSkipped:
+				status = "skipped"
+			case fleet.StatusFailed:
+				status = "failed"
+			}
+			sr := syncRepoResult{
+				Repo:   res.Task.RepoName,
+				Status: status,
+			}
+			if res.Err != nil {
+				sr.Error = res.Err.Error()
+			}
+			jr.Results = append(jr.Results, sr)
+		}
+		out = append(out, jr)
 	}
-	return p
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Print(string(data))
+	return nil
 }
 
 func setProtocol(idx map[string]*manifest.ManifestRepo, fullName, protocol string) {
 	if r := idx[fullName]; r != nil {
 		r.Protocol = protocol
-	}
-}
-
-func setRepoPath(idx map[string]*manifest.ManifestRepo, fullName, path string) {
-	if r := idx[fullName]; r != nil {
-		r.Path = path
 	}
 }

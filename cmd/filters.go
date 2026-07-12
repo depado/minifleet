@@ -225,24 +225,8 @@ func matchAnyTopic(repoTopics, filterTopics []string) bool {
 	return false
 }
 
-// groupRepos returns the set of full_names belonging to a group, scanning all
-// owners. Returns nil if the group does not exist.
+// groupRepos returns the set of full_names belonging to a group in the
+// single-owner manifest. Returns nil if the group does not exist.
 func groupRepos(mf *manifest.FleetManifest, group string) map[string]struct{} {
-	if mf == nil {
-		return nil
-	}
-	set := make(map[string]struct{})
-	found := false
-	for _, o := range mf.Owners {
-		if names, ok := o.Groups[group]; ok {
-			found = true
-			for _, n := range names {
-				set[n] = struct{}{}
-			}
-		}
-	}
-	if !found {
-		return nil
-	}
-	return set
+	return mf.GroupRepos(group)
 }

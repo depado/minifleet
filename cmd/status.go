@@ -10,14 +10,13 @@ import (
 
 	"github.com/depado/minifleet/internal/fleet"
 	"github.com/depado/minifleet/internal/git"
-	"github.com/depado/minifleet/internal/manifest"
 	"github.com/depado/minifleet/internal/ui"
 )
 
 type statusRow struct {
-	Repo      string           `json:"repo"`
-	Status    *git.RepoStatus  `json:"status,omitempty"`
-	Error     string           `json:"error,omitempty"`
+	Repo   string          `json:"repo"`
+	Status *git.RepoStatus `json:"status,omitempty"`
+	Error  string          `json:"error,omitempty"`
 }
 
 func newStatusCmd() *cobra.Command {
@@ -29,6 +28,7 @@ func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show git status overview of all cloned repositories",
+		Long:  "Operates on the fleet in CWD (if fleet.yml is present), or all known fleets otherwise.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			conf, err := confFromCtx(cmd)
 			if err != nil {
@@ -36,57 +36,32 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			mf, _ := manifest.Load(manifest.ManifestPath())
-
-			scanDir := conf.Fleet.Base
-			flat := false
-			if conf.Fleet.Path != "" {
-				scanDir = expandPath(conf.Fleet.Path)
-				flat = true
-			}
-
-			tasks, err := fleet.Scan(scanDir, filters.Target, mf, flat)
-			if err != nil {
-				return fmt.Errorf("scan repos: %w", err)
-			}
-
-			tasksWithName := make([]taskWithName, len(tasks))
-			for i, t := range tasks {
-				tasksWithName[i] = taskWithName{RepoName: t.RepoName, FullName: t.FullName, ID: t.ID}
-			}
-			tasksWithName, err = filters.ApplyTasks(tasksWithName, mf)
-			if err != nil {
-				return err
-			}
-
-			filteredTasks := make([]fleet.RepoTask, len(tasksWithName))
-			for i, t := range tasksWithName {
-				filteredTasks[i] = fleet.RepoTask{RepoName: t.RepoName, ID: t.ID, FullName: t.FullName}
-			}
-
-			if len(filteredTasks) == 0 {
-				ui.PrintDim("No repositories found in " + scanDir)
+			targets := discoverFleets(conf)
+			if len(targets) == 0 {
+				ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet sync <owner>' first.")
 				return nil
 			}
 
-			exec := fleet.NewExecutor(fleet.ExecutorConfig{
-				Concurrency: conf.Fleet.Concurrent,
-				Progress:    false,
-			})
-
-			result := exec.Run(ctx, filteredTasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
-				status, err := git.Status(ctx, task.ID)
+			var allRows []statusRow
+			for _, t := range targets {
+				rows, err := runStatusForFleet(ctx, conf, t, filters, format)
 				if err != nil {
-					return nil, err
+					return err
 				}
-				return status, nil
-			})
+				allRows = append(allRows, rows...)
+			}
 
 			switch format {
 			case "json":
-				return outputStatusJSON(result)
+				data, err := json.MarshalIndent(allRows, "", "  ")
+				if err != nil {
+					return err
+				}
+				fmt.Print(string(data))
+				return nil
 			default:
-				return outputStatusTable(result)
+				renderStatusTable(allRows)
+				return nil
 			}
 		},
 	}
@@ -97,48 +72,45 @@ func newStatusCmd() *cobra.Command {
 	return cmd
 }
 
-func outputStatusTable(result *fleet.BulkResult) error {
-	tbl := ui.NewTable("Repo", "Branch", "Behind", "Ahead", "Dirty", "Stash")
-	rows := make([]fleet.RepoResult, len(result.Results))
-	copy(rows, result.Results)
-	sort.Slice(rows, func(i, j int) bool { return rows[i].Task.RepoName < rows[j].Task.RepoName })
+func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters, format string) ([]statusRow, error) {
+	mf := loadFleetManifest(t)
 
-	for i := range rows {
-		r := &rows[i]
-		branch := "?"
-		behind := "?"
-		ahead := "?"
-		dirty := "?"
-		stash := "?"
-
-		if r.Status != fleet.StatusFailed {
-			if s, ok := r.Payload.(*git.RepoStatus); ok {
-				branch = s.Branch
-				behind = fmt.Sprintf("%d", s.Behind)
-				ahead = fmt.Sprintf("%d", s.Ahead)
-				if s.Dirty {
-					dirty = "[red]yes[/]"
-				} else {
-					dirty = "[dim]no[/]"
-				}
-				stash = fmt.Sprintf("%d", s.StashCount)
-			}
-		}
-
-		tbl.AddRow(
-			fmt.Sprintf("[bold]%s[/]", r.Task.RepoName),
-			branch,
-			behind,
-			ahead,
-			dirty,
-			stash,
-		)
+	tasks, err := fleet.Scan(t.Dir, f.Target, mf)
+	if err != nil {
+		return nil, fmt.Errorf("scan %s: %w", t.Dir, err)
 	}
-	ui.DefaultConsole.Render(tbl)
-	return nil
-}
 
-func outputStatusJSON(result *fleet.BulkResult) error {
+	tasksWithName := make([]taskWithName, len(tasks))
+	for i, tk := range tasks {
+		tasksWithName[i] = taskWithName{RepoName: tk.RepoName, FullName: tk.FullName, ID: tk.ID}
+	}
+	tasksWithName, err = f.ApplyTasks(tasksWithName, mf)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]fleet.RepoTask, len(tasksWithName))
+	for i, tn := range tasksWithName {
+		filtered[i] = fleet.RepoTask{RepoName: tn.RepoName, ID: tn.ID, FullName: tn.FullName}
+	}
+
+	if len(filtered) == 0 {
+		return nil, nil
+	}
+
+	exec := fleet.NewExecutor(fleet.ExecutorConfig{
+		Concurrency: conf.Fleet.Concurrent,
+		Progress:    false,
+	})
+
+	result := exec.Run(ctx, filtered, func(ctx context.Context, task fleet.RepoTask) (any, error) {
+		status, err := git.Status(ctx, task.ID)
+		if err != nil {
+			return nil, err
+		}
+		return status, nil
+	})
+
 	out := make([]statusRow, 0, len(result.Results))
 	for i := range result.Results {
 		r := &result.Results[i]
@@ -150,10 +122,42 @@ func outputStatusJSON(result *fleet.BulkResult) error {
 		}
 		out = append(out, row)
 	}
-	data, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return err
+	return out, nil
+}
+
+func renderStatusTable(rows []statusRow) {
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Repo < rows[j].Repo })
+
+	tbl := ui.NewTable("Repo", "Branch", "Behind", "Ahead", "Dirty", "Stash")
+	for _, r := range rows {
+		branch := "?"
+		behind := "?"
+		ahead := "?"
+		dirty := "?"
+		stash := "?"
+
+		if r.Error != "" {
+			dirty = "[red]error[/]"
+		} else if r.Status != nil {
+			branch = r.Status.Branch
+			behind = fmt.Sprintf("%d", r.Status.Behind)
+			ahead = fmt.Sprintf("%d", r.Status.Ahead)
+			if r.Status.Dirty {
+				dirty = "[red]yes[/]"
+			} else {
+				dirty = "[dim]no[/]"
+			}
+			stash = fmt.Sprintf("%d", r.Status.StashCount)
+		}
+
+		tbl.AddRow(
+			fmt.Sprintf("[bold]%s[/]", r.Repo),
+			branch,
+			behind,
+			ahead,
+			dirty,
+			stash,
+		)
 	}
-	fmt.Print(string(data))
-	return nil
+	ui.DefaultConsole.Render(tbl)
 }

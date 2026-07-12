@@ -4,21 +4,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
-
-	"github.com/depado/minifleet/internal/manifest"
 )
 
 type configFile struct {
 	GitHub struct {
 		Token string `yaml:"token,omitempty"`
+		Host  string `yaml:"host,omitempty"`
 	} `yaml:"github"`
 	Fleet struct {
-		Base       string `yaml:"base"`
-		Shallow    bool   `yaml:"shallow,omitempty"`
-		Concurrent int    `yaml:"concurrent"`
+		Base        string            `yaml:"base"`
+		Shallow     bool              `yaml:"shallow,omitempty"`
+		Concurrent  int               `yaml:"concurrent"`
+		KnownFleets map[string]string `yaml:"known_fleets,omitempty"`
 	} `yaml:"fleet"`
 	Log struct {
 		Level  string `yaml:"level"`
@@ -60,7 +61,7 @@ func newInitCmd() *cobra.Command {
 				base = conf.Fleet.Base
 			}
 
-			if err := writeConfig(token, base, conf.Fleet.Concurrent); err != nil {
+			if err := writeConfig(token, conf.GitHub.Host, base, conf.Fleet.Concurrent, conf.Fleet.KnownFleets); err != nil {
 				return err
 			}
 			fmt.Printf("Config written to %s\n", ConfigPath())
@@ -75,12 +76,14 @@ func newInitCmd() *cobra.Command {
 	return cmd
 }
 
-func writeConfig(token, base string, concurrent int) error {
+func writeConfig(token, host, base string, concurrent int, knownFleets map[string]string) error {
 	cfg := configFile{}
 	cfg.GitHub.Token = token
+	cfg.GitHub.Host = host
 	cfg.Fleet.Base = base
 	cfg.Fleet.Concurrent = concurrent
 	cfg.Fleet.Shallow = false
+	cfg.Fleet.KnownFleets = knownFleets
 	cfg.Log.Level = "info"
 	cfg.Log.Format = "text"
 	cfg.Log.Source = false
@@ -101,30 +104,48 @@ func writeConfig(token, base string, concurrent int) error {
 	return os.WriteFile(ConfigPath(), append([]byte("# minifleet configuration\n"), data...), 0o644)
 }
 
-func printConfig(conf *Conf) {
-	fmt.Printf("Config path:  %s\n", ConfigPath())
-	fmt.Printf("Fleet path:   %s\n", manifest.ManifestPath())
-	fmt.Printf("Base dir:     %s\n", conf.Fleet.Base)
-	fmt.Printf("Concurrency:  %d\n", conf.Fleet.Concurrent)
-	fmt.Printf("Log level:    %s\n", conf.Log.Level)
-	fmt.Printf("Log format:   %s\n", conf.Log.Format)
+// SaveConf writes the current Conf back to disk, preserving known_fleets.
+// Used by sync to register newly-created fleet directories.
+func SaveConf(conf *Conf) error {
+	return writeConfig(conf.GitHub.Token, conf.GitHub.Host, conf.Fleet.Base, conf.Fleet.Concurrent, conf.Fleet.KnownFleets)
+}
 
-	mf, _ := manifest.Load(manifest.ManifestPath())
-	if mf != nil && len(mf.Owners) > 0 {
-		fmt.Printf("\nTracked owners:\n")
-		for owner := range mf.Owners {
-			total := len(mf.Owners[owner].Repos)
-			ignored := 0
-			for _, r := range mf.Owners[owner].Repos {
-				if r.Ignored {
-					ignored++
-				}
+// RegisterFleet records an owner → directory mapping in conf.Fleet.KnownFleets
+// and persists config to disk. Idempotent: re-registering an existing mapping
+// is a no-op.
+func RegisterFleet(conf *Conf, owner, dir string) error {
+	if conf.Fleet.KnownFleets == nil {
+		conf.Fleet.KnownFleets = make(map[string]string)
+	}
+	if existing, ok := conf.Fleet.KnownFleets[owner]; ok && existing == dir {
+		return nil
+	}
+	conf.Fleet.KnownFleets[owner] = dir
+	return SaveConf(conf)
+}
+
+func printConfig(conf *Conf) {
+	fmt.Printf("Config path:   %s\n", ConfigPath())
+	fmt.Printf("Base dir:      %s\n", conf.Fleet.Base)
+	fmt.Printf("Concurrency:   %d\n", conf.Fleet.Concurrent)
+	fmt.Printf("GitHub host:   %s\n", conf.GitHub.Host)
+	fmt.Printf("Log level:     %s\n", conf.Log.Level)
+	fmt.Printf("Log format:    %s\n", conf.Log.Format)
+
+	if len(conf.Fleet.KnownFleets) > 0 {
+		fmt.Printf("\nKnown fleets:\n")
+		owners := make([]string, 0, len(conf.Fleet.KnownFleets))
+		for k := range conf.Fleet.KnownFleets {
+			owners = append(owners, k)
+		}
+		sort.Strings(owners)
+		for _, owner := range owners {
+			dir := conf.Fleet.KnownFleets[owner]
+			msg := fmt.Sprintf("  %s → %s", owner, dir)
+			if _, err := os.Stat(filepath.Join(dir, "fleet.yml")); err != nil {
+				msg += "  [fleet.yml missing]"
 			}
-			fmt.Printf("  %s: %d repos", owner, total)
-			if ignored > 0 {
-				fmt.Printf(" (%d ignored)", ignored)
-			}
-			fmt.Println()
+			fmt.Println(msg)
 		}
 	}
 }

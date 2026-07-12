@@ -15,15 +15,14 @@ func TestFiltersApply(t *testing.T) {
 	}
 	mf := &manifest.FleetManifest{
 		Version: "1",
-		Owners: map[string]manifest.Owner{
-			"o": {
-				Groups: map[string][]string{"backend": {"o/svc-api"}},
-				Repos: []manifest.ManifestRepo{
-					{FullName: "o/svc-api", Labels: map[string]string{"tier": "1"}, Archived: false, Fork: false, Topics: []string{"go", "service"}, Language: "Go"},
-					{FullName: "o/old-thing", Labels: map[string]string{"tier": "3"}, Archived: true, Fork: false, Language: "Python"},
-					{FullName: "o/forked-lib", Labels: nil, Archived: false, Fork: true, Language: "Go", Topics: []string{"go"}},
-				},
-			},
+		Owner:   "o",
+		Groups: map[string][]string{
+			"backend": {"o/svc-api"},
+		},
+		Repos: []manifest.ManifestRepo{
+			{FullName: "o/svc-api", Labels: map[string]string{"tier": "1"}, Archived: false, Fork: false, Topics: []string{"go", "service"}, Language: "Go"},
+			{FullName: "o/old-thing", Labels: map[string]string{"tier": "3"}, Archived: true, Fork: false, Language: "Python"},
+			{FullName: "o/forked-lib", Labels: nil, Archived: false, Fork: true, Language: "Go", Topics: []string{"go"}},
 		},
 	}
 
@@ -37,9 +36,9 @@ func TestFiltersApply(t *testing.T) {
 		{"include-forks", Filters{IncludeForks: true}, []string{"svc-api", "forked-lib"}},
 		{"topic go", Filters{Topics: []string{"go"}, IncludeForks: true, IncludeArchived: true}, []string{"svc-api", "forked-lib"}},
 		{"language python archived", Filters{Language: "Python", IncludeArchived: true}, []string{"old-thing"}},
-		{"label tier=1", Filters{}, []string{"svc-api"}}, // via manifest
-		{"label tier", Filters{IncludeArchived: true}, []string{"svc-api", "old-thing"}},
-		{"group backend", Filters{}, []string{"svc-api"}},
+		{"label tier=1", Filters{Labels: []string{"tier=1"}}, []string{"svc-api"}},
+		{"label tier (any)", Filters{Labels: []string{"tier"}, IncludeArchived: true}, []string{"svc-api", "old-thing"}},
+		{"group backend", Filters{Group: "backend"}, []string{"svc-api"}},
 		{"group missing errors", Filters{Group: "nope"}, nil},
 		{"target regex", Filters{Target: "^svc", IncludeArchived: true, IncludeForks: true}, []string{"svc-api"}},
 		{"visibility private", Filters{Visibility: "private", IncludeArchived: true, IncludeForks: true}, []string{"svc-api"}},

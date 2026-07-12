@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/depado/minifleet/internal/fleet"
-	"github.com/depado/minifleet/internal/manifest"
 	"github.com/depado/minifleet/internal/provider"
 	"github.com/depado/minifleet/internal/provider/github"
 	"github.com/depado/minifleet/internal/ui"
@@ -51,7 +50,8 @@ func newPRsCmd() *cobra.Command {
 				return fmt.Errorf("list repos: %w", err)
 			}
 
-			mf, _ := manifest.Load(manifest.ManifestPath())
+			target, _ := resolveFleet(conf, prov.Host(), owner)
+			mf := loadFleetManifest(target)
 			repos, err = filters.Apply(repos, mf)
 			if err != nil {
 				return err

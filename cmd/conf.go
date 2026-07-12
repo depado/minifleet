@@ -28,10 +28,11 @@ type GitHubConf struct {
 }
 
 type FleetConf struct {
-	Base       string `mapstructure:"base"`
-	Path       string `mapstructure:"path"`  // one-shot override: bypass host/owner nesting
-	Shallow    bool   `mapstructure:"shallow"`
-	Concurrent int    `mapstructure:"concurrent"`
+	Base         string            `mapstructure:"base"`
+	Path         string            `mapstructure:"path"`   // one-shot override: clone into this directory
+	Shallow      bool             `mapstructure:"shallow"`
+	Concurrent   int               `mapstructure:"concurrent"`
+	KnownFleets  map[string]string `mapstructure:"known_fleets,omitempty"` // owner → fleet directory
 }
 
 type UIConf struct {

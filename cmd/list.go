@@ -48,7 +48,9 @@ func newListCmd() *cobra.Command {
 				return fmt.Errorf("list repos: %w", err)
 			}
 
-			mf, _ := manifest.Load(manifest.ManifestPath())
+			// Load the per-owner manifest for filter context (labels/groups).
+			target, _ := resolveFleet(conf, prov.Host(), owner)
+			mf := loadFleetManifest(target)
 			repos, err = filters.Apply(repos, mf)
 			if err != nil {
 				return err
