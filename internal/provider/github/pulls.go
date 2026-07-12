@@ -10,20 +10,28 @@ import (
 
 func (c *Client) ListPullRequests(ctx context.Context, owner, repoName string, opts provider.ListPROptions) ([]*provider.PullRequest, error) {
 	listOpts := &gogithub.PullRequestListOptions{
-		State: opts.State,
-		Sort:  opts.Sort,
-		ListOptions: gogithub.ListOptions{
-			PerPage: opts.Limit,
-		},
+		State:       opts.State,
+		Sort:        opts.Sort,
+		ListOptions: gogithub.ListOptions{PerPage: 100},
 	}
 
-	if listOpts.PerPage <= 0 {
-		listOpts.PerPage = 30
+	var ghPRs []*gogithub.PullRequest
+	for {
+		page, resp, err := c.client.PullRequests.List(ctx, owner, repoName, listOpts)
+		if err != nil {
+			return nil, fmt.Errorf("list PRs for %s/%s: %w", owner, repoName, err)
+		}
+		ghPRs = append(ghPRs, page...)
+		if resp.NextPage == 0 {
+			break
+		}
+		if opts.Limit > 0 && len(ghPRs) >= opts.Limit {
+			break
+		}
+		listOpts.Page = resp.NextPage
 	}
-
-	ghPRs, _, err := c.client.PullRequests.List(ctx, owner, repoName, listOpts)
-	if err != nil {
-		return nil, fmt.Errorf("list PRs for %s/%s: %w", owner, repoName, err)
+	if opts.Limit > 0 && len(ghPRs) > opts.Limit {
+		ghPRs = ghPRs[:opts.Limit]
 	}
 
 	prs := make([]*provider.PullRequest, 0, len(ghPRs))

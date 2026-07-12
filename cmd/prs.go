@@ -78,7 +78,7 @@ func newPRsCmd() *cobra.Command {
 				prs, err := prov.ListPullRequests(ctx, owner, task.RepoName, provider.ListPROptions{
 					State: state,
 					Sort:  "updated",
-					Limit: 30,
+					Limit: 0,
 				})
 				if err != nil {
 					return nil, err
