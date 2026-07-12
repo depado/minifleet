@@ -60,8 +60,10 @@ func newInitCmd() *cobra.Command {
 			if base == "" {
 				base = conf.Fleet.Base
 			}
+			conf.GitHub.Token = token
+			conf.Fleet.Base = base
 
-			if err := writeConfig(token, conf.GitHub.Host, base, conf.Fleet.Concurrent, conf.Fleet.KnownFleets); err != nil {
+			if err := writeConfigFile(buildConfigFile(conf)); err != nil {
 				return err
 			}
 			fmt.Printf("Config written to %s\n", ConfigPath())
@@ -76,38 +78,54 @@ func newInitCmd() *cobra.Command {
 	return cmd
 }
 
-func writeConfig(token, host, base string, concurrent int, knownFleets map[string]string) error {
+// buildConfigFile projects the runtime Conf onto the on-disk file shape,
+// preserving every field (no hardcoded defaults).
+func buildConfigFile(conf *Conf) configFile {
 	cfg := configFile{}
-	cfg.GitHub.Token = token
-	cfg.GitHub.Host = host
-	cfg.Fleet.Base = base
-	cfg.Fleet.Concurrent = concurrent
-	cfg.Fleet.Shallow = false
-	cfg.Fleet.KnownFleets = knownFleets
-	cfg.Log.Level = "info"
-	cfg.Log.Format = "text"
-	cfg.Log.Source = false
-	cfg.Log.Color = "auto"
-	cfg.UI.Progress = true
-	cfg.UI.Color = true
+	cfg.GitHub.Token = conf.GitHub.Token
+	cfg.GitHub.Host = conf.GitHub.Host
+	cfg.Fleet.Base = conf.Fleet.Base
+	cfg.Fleet.Shallow = conf.Fleet.Shallow
+	cfg.Fleet.Concurrent = conf.Fleet.Concurrent
+	cfg.Fleet.KnownFleets = conf.Fleet.KnownFleets
+	cfg.Log.Level = conf.Log.Level
+	cfg.Log.Format = conf.Log.Format
+	cfg.Log.Source = conf.Log.Source
+	cfg.Log.Color = conf.Log.Color
+	cfg.UI.Progress = conf.UI.Progress
+	cfg.UI.Color = conf.UI.Color
+	return cfg
+}
 
+// writeConfigFile marshals cfg to the config path with 0600 perms (the file
+// holds a GitHub token).
+func writeConfigFile(cfg configFile) error {
 	data, err := yaml.Marshal(&cfg)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-
 	dir := filepath.Dir(ConfigPath())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
-
-	return os.WriteFile(ConfigPath(), append([]byte("# minifleet configuration\n"), data...), 0o644)
+	return os.WriteFile(ConfigPath(), append([]byte("# minifleet configuration\n"), data...), 0o600)
 }
 
-// SaveConf writes the current Conf back to disk, preserving known_fleets.
-// Used by sync to register newly-created fleet directories.
+// SaveConf persists conf to disk with 0600 perms, preserving all fields.
+// The token is taken from the existing on-disk config (when present) rather
+// than from conf.GitHub.Token, so a token sourced only from the GITHUB_TOKEN
+// environment variable is never written to disk by a background save such as
+// sync registering a fleet.
 func SaveConf(conf *Conf) error {
-	return writeConfig(conf.GitHub.Token, conf.GitHub.Host, conf.Fleet.Base, conf.Fleet.Concurrent, conf.Fleet.KnownFleets)
+	cfg := buildConfigFile(conf)
+	cfg.GitHub.Token = ""
+	if existing, err := os.ReadFile(ConfigPath()); err == nil {
+		var prev configFile
+		if yaml.Unmarshal(existing, &prev) == nil {
+			cfg.GitHub.Token = prev.GitHub.Token
+		}
+	}
+	return writeConfigFile(cfg)
 }
 
 // RegisterFleet records an owner → directory mapping in conf.Fleet.KnownFleets
