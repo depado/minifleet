@@ -88,7 +88,7 @@ func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters
 	})
 
 	result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
-		if !git.IsRepo(task.Dir) {
+		if !git.IsRepo(ctx, task.Dir) {
 			return nil, &fleet.SkipError{Reason: "not cloned"}
 		}
 		return git.Status(ctx, task.Dir)

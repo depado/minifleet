@@ -174,7 +174,7 @@ Examples:
 					ui.DefaultPrint(fmt.Sprintf("[bold]%s[/] [dim](%s)[/]", p.target.Owner, p.target.Dir))
 				}
 				result := executor.Run(ctx, p.tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
-					if !git.IsRepo(task.Dir) {
+					if !git.IsRepo(ctx, task.Dir) {
 						return nil, &fleet.SkipError{Reason: "not cloned"}
 					}
 					return runOneRepo(ctx, task, input, shell, useLive, jsonMode, display)

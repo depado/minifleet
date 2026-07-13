@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -42,7 +43,7 @@ func Scan(fleetDir string, targetRegex string, mf *manifest.FleetManifest) ([]Re
 		name := e.Name()
 		repoDir := filepath.Join(fleetDir, name)
 
-		if !git.IsRepo(repoDir) {
+		if !git.IsRepo(context.Background(), repoDir) {
 			continue
 		}
 		if pattern != nil && !pattern.MatchString(name) {

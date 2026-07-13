@@ -23,8 +23,8 @@ func run(ctx context.Context, dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func IsRepo(dir string) bool {
-	cmd := exec.Command("git", "rev-parse", "--git-dir")
+func IsRepo(ctx context.Context, dir string) bool {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--git-dir")
 	cmd.Dir = dir
 	return cmd.Run() == nil
 }

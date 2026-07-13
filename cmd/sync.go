@@ -192,7 +192,7 @@ func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t
 	result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
 		dir := task.Dir
 
-		if git.IsRepo(dir) {
+		if git.IsRepo(ctx, dir) {
 			if mr := idx[task.ID]; mr != nil && mr.Ignored {
 				return nil, &fleet.SkipError{Reason: "ignored"}
 			}
