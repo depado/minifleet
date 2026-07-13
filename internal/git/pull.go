@@ -17,6 +17,9 @@ func Pull(ctx context.Context, dir string) error {
 	if err != nil {
 		return fmt.Errorf("get branch: %w", err)
 	}
+	if branch == "HEAD" {
+		return &SkipError{Reason: "detached HEAD, cannot pull"}
+	}
 
 	cmd := exec.CommandContext(ctx, "git", "rebase", fmt.Sprintf("origin/%s", branch), "--autostash")
 	cmd.Dir = dir

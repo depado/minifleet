@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+type SkipError struct{ Reason string }
+
+func (e *SkipError) Error() string { return e.Reason }
+
 func run(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/depado/gorich/progress"
+	"github.com/depado/minifleet/internal/git"
 )
 
 type RepoTask struct {
@@ -231,5 +232,9 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 
 func isSkipError(err error) bool {
 	_, ok := err.(*SkipError)
+	if ok {
+		return true
+	}
+	_, ok = err.(*git.SkipError)
 	return ok
 }
