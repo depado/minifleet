@@ -120,20 +120,14 @@ func (c *Client) DetectOwner(ctx context.Context, owner string) (bool, error) {
 
 func convertRepo(r *gogithub.Repository) *provider.Repo {
 	return &provider.Repo{
-		Name:          r.GetName(),
-		FullName:      r.GetFullName(),
-		Description:   r.GetDescription(),
-		CloneURL:      r.GetCloneURL(),
-		SSHURL:        r.GetSSHURL(),
-		DefaultBranch: r.GetDefaultBranch(),
-		Language:      r.GetLanguage(),
-		Archived:      r.GetArchived(),
-		Fork:          r.GetFork(),
-		Private:       r.GetPrivate(),
-		Visibility:    r.GetVisibility(),
-		Topics:        r.Topics,
-		PushedAt:      r.GetPushedAt().Time,
-		UpdatedAt:     r.GetUpdatedAt().Time,
-		CreatedAt:     r.GetCreatedAt().Time,
+		Name:       r.GetName(),
+		FullName:   r.GetFullName(),
+		Language:   r.GetLanguage(),
+		Archived:   r.GetArchived(),
+		Fork:       r.GetFork(),
+		Private:    r.GetPrivate(),
+		Visibility: r.GetVisibility(),
+		Topics:     r.Topics,
+		UpdatedAt:  r.GetUpdatedAt().Time,
 	}
 }

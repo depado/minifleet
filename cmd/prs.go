@@ -270,6 +270,8 @@ func reviewDisplay(s provider.ReviewStatus) string {
 		return "[yellow]changes[/]"
 	case provider.ReviewCommented:
 		return "[dim]commented[/]"
+	case provider.ReviewDismissed:
+		return "[dim]dismissed[/]"
 	default:
 		return "[dim]pending[/]"
 	}

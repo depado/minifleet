@@ -6,21 +6,15 @@ import (
 )
 
 type Repo struct {
-	Name          string
-	FullName      string
-	Description   string
-	CloneURL      string
-	SSHURL        string
-	DefaultBranch string
-	Language      string
-	Archived      bool
-	Fork          bool
-	Private       bool
-	Visibility    string
-	Topics        []string
-	PushedAt      time.Time
-	UpdatedAt     time.Time
-	CreatedAt     time.Time
+	Name       string
+	FullName   string
+	Language   string
+	Archived   bool
+	Fork       bool
+	Private    bool
+	Visibility string
+	Topics     []string
+	UpdatedAt  time.Time
 }
 
 type PullRequest struct {
@@ -29,10 +23,6 @@ type PullRequest struct {
 	State        string
 	Author       string
 	Draft        bool
-	URL          string
-	BaseBranch   string
-	HeadBranch   string
-	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	CIStatus     CIStatus
 	ReviewStatus ReviewStatus
@@ -51,7 +41,6 @@ const (
 type ReviewStatus string
 
 const (
-	ReviewUnknown          ReviewStatus = "unknown"
 	ReviewApproved         ReviewStatus = "approved"
 	ReviewChangesRequested ReviewStatus = "changes_requested"
 	ReviewPending          ReviewStatus = "pending"
