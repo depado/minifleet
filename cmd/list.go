@@ -60,7 +60,7 @@ func newListCmd() *cobra.Command {
 	}
 
 	addFilterFlags(cmd, &filters)
-	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json")
+	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, yaml")
 	cmd.Flags().IntVar(&limit, "limit", 1000, "max repos to list")
 
 	return cmd
@@ -161,6 +161,39 @@ func outputManifestTable(tasks []fleet.RepoTask, mf *manifest.FleetManifest, for
 			out = append(out, row)
 		}
 		data, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Print(string(data))
+		return nil
+	}
+
+	if format == "yaml" {
+		type yr struct {
+			Name     string   `yaml:"name"`
+			FullName string   `yaml:"full_name,omitempty"`
+			Language string   `yaml:"language,omitempty"`
+			Topics   []string `yaml:"topics,omitempty"`
+			Archived bool     `yaml:"archived"`
+			Fork     bool     `yaml:"fork"`
+			Updated  string   `yaml:"updated,omitempty"`
+		}
+		out := make([]yr, 0, len(tasks))
+		for _, t := range tasks {
+			mr := idx[t.FullName]
+			row := yr{Name: t.RepoName, FullName: t.FullName}
+			if mr != nil {
+				row.Language = mr.Language
+				row.Topics = mr.Topics
+				row.Archived = mr.Archived
+				row.Fork = mr.Fork
+				if !mr.UpdatedAt.IsZero() {
+					row.Updated = mr.UpdatedAt.Format("2006-01-02")
+				}
+			}
+			out = append(out, row)
+		}
+		data, err := yaml.Marshal(out)
 		if err != nil {
 			return err
 		}
