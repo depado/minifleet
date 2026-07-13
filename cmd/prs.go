@@ -130,7 +130,7 @@ func prsFromAPI(ctx context.Context, conf *Conf, prov provider.Provider, owner s
 func execPRs(ctx context.Context, conf *Conf, prov provider.Provider, owner string, tasks []fleet.RepoTask, state, author string, noDraft bool, format string) error {
 	exec := fleet.NewExecutor(fleet.ExecutorConfig{
 		Concurrency: conf.Fleet.Concurrent,
-		Progress:    conf.UI.Progress,
+		Progress:    conf.UI.Progress && format != "json",
 		ProgressConfig: fleet.ProgressConfig{
 			Description: "Fetching pull requests",
 		},
