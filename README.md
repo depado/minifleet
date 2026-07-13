@@ -337,10 +337,12 @@ Flags:
   --language string          filter by primary language (via manifest)
   --label stringArray        filter by manifest label
   --group string             filter by manifest group
-  --summary                  one line per repo; --summary=false shows live blocks (default: true)
+  --summary                  force summary mode (one line per repo after completion)
+  --progress                 force live block mode (animated spinners + streaming output)
   --block-lines int          output lines per repo block in live mode (default: 3)
   --dry-run                  print what would run; do not execute
   --shell string             shell to invoke (default: sh)
+  --format string            output format: table (auto), json
 ```
 
 Use `--` to separate flags from the command itself.
@@ -354,8 +356,8 @@ minifleet run -- "go test ./..."
 # Lint only backend repos
 minifleet run --group backend -- "make lint"
 
-# Stream output of a build (interleaved, per-repo prefixes)
-minifleet run --summary=false --language go -- "make build"
+# Stream output of a build (force live blocks)
+minifleet run --progress --language go -- "make build"
 
 # Cross-repo code search
 minifleet run -- "grep -r 'TODO' ."
@@ -364,9 +366,9 @@ minifleet run -- "grep -r 'TODO' ."
 minifleet run --dry-run --include-regex "^old-" -- "rm -f .env.local"
 ```
 
-**Summary mode** (default): one line per repo (`✓`/`✗ exit N` + duration); failed repos also print their captured stderr and stdout.
+**Summary mode** (`--summary`): one line per repo (`✓`/`✗ exit N` + duration); failed repos also print their captured stderr and stdout. This is the default when stdout is not a terminal (piped or redirected).
 
-**Live block mode** (`--summary=false`): when stdout is a terminal, each repo gets a growing block that updates in place:
+**Live block mode** (`--progress`, or TTY default): when stdout is a terminal, each repo gets a growing block that updates in place:
 
 ```
 → articles
