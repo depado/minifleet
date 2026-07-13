@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -230,7 +231,9 @@ func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t
 	})
 
 	if result.Succeeded > 0 || result.Skipped > 0 {
-		_ = manifest.Save(mf, manifest.Path(t.Dir))
+		if err := manifest.Save(mf, manifest.Path(t.Dir)); err != nil {
+			slog.Warn("failed to save manifest after sync", "path", manifest.Path(t.Dir), "error", err)
+		}
 		if err := RegisterFleet(conf, t.Owner, t.Dir); err != nil {
 			if format != "json" {
 				ui.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
