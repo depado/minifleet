@@ -34,7 +34,7 @@ func Setup(root *cobra.Command) {
 		}
 		lg := NewLogger(conf)
 		slog.SetDefault(lg)
-		lg.Info("starting", "version", Version, "build", Build, "date", BuildDate)
+		lg.Debug("starting", "version", Version, "build", Build, "date", BuildDate)
 
 		ctx := context.WithValue(cmd.Context(), confKey{}, conf)
 		cmd.SetContext(ctx)
@@ -44,6 +44,7 @@ func Setup(root *cobra.Command) {
 
 func SetupCommands(root *cobra.Command) {
 	root.AddCommand(
+		newDiscoverCmd(),
 		newInitCmd(),
 		newSyncCmd(),
 		newListCmd(),

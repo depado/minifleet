@@ -15,7 +15,6 @@ func TestSaveConf(t *testing.T) {
 		conf.Log.Format = "json"
 		conf.UI.Progress = false
 		conf.Fleet.Shallow = true
-		conf.Fleet.Base = "/tmp/x"
 		conf.Fleet.Concurrent = 9
 		if err := SaveConf(conf); err != nil {
 			t.Fatalf("SaveConf: %v", err)
@@ -41,9 +40,6 @@ func TestSaveConf(t *testing.T) {
 		}
 		if cfg.Fleet.Shallow != true {
 			t.Errorf("Fleet.Shallow = %v, want true", cfg.Fleet.Shallow)
-		}
-		if cfg.Fleet.Base != "/tmp/x" {
-			t.Errorf("Fleet.Base = %q, want %q", cfg.Fleet.Base, "/tmp/x")
 		}
 		if cfg.Fleet.Concurrent != 9 {
 			t.Errorf("Fleet.Concurrent = %d, want 9", cfg.Fleet.Concurrent)

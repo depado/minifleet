@@ -19,7 +19,6 @@ func addGitHubFlags(c *cobra.Command) {
 }
 
 func addFleetFlags(c *cobra.Command) {
-	c.PersistentFlags().String("fleet.base", "", "base directory for all clones (default: ~/dev)")
 	c.PersistentFlags().String("fleet.path", "", "override clone directory, bypass host/owner nesting")
 	c.PersistentFlags().Bool("fleet.shallow", false, "use shallow clones (--depth 1 --filter=blob:none)")
 	c.PersistentFlags().Int("fleet.concurrent", 5, "maximum concurrent operations")

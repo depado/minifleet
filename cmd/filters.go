@@ -30,17 +30,18 @@ type Filters struct {
 // addFilterFlags binds the full filter flag set on a command. All commands that
 // operate on repos use the same flags so users get a consistent vocabulary.
 func addFilterFlags(c *cobra.Command, f *Filters) {
-	c.Flags().StringVar(&f.IncludeRegex, "include-regex", "", "regex to match repo names")
-	c.Flags().StringVar(&f.ExcludeRegex, "exclude-regex", "", "regex to exclude repo names")
-	c.Flags().StringArrayVar(&f.Include, "include", nil, "include repo by exact name (repeatable)")
-	c.Flags().StringArrayVar(&f.Exclude, "exclude", nil, "exclude repo by exact name (repeatable)")
-	c.Flags().StringArrayVar(&f.Topics, "topic", nil, "filter by topic (repeatable)")
-	c.Flags().BoolVar(&f.IncludeArchived, "include-archived", false, "include archived repos")
-	c.Flags().BoolVar(&f.IncludeForks, "include-forks", false, "include forked repos")
-	c.Flags().StringVar(&f.Visibility, "visibility", "all", "filter by visibility: all, public, private")
-	c.Flags().StringVar(&f.Language, "language", "", "filter by primary language")
-	c.Flags().StringArrayVar(&f.Labels, "label", nil, "filter by manifest label (key=value or key, repeatable)")
-	c.Flags().StringVar(&f.Group, "group", "", "filter by manifest group")
+	flags := c.Flags()
+	flags.StringVarP(&f.IncludeRegex, "include-regex", "r", "", "regex to match repo names")
+	flags.StringVarP(&f.ExcludeRegex, "exclude-regex", "R", "", "regex to exclude repo names")
+	flags.StringArrayVarP(&f.Include, "include", "i", nil, "include repo by exact name (repeatable)")
+	flags.StringArrayVarP(&f.Exclude, "exclude", "e", nil, "exclude repo by exact name (repeatable)")
+	flags.StringArrayVarP(&f.Topics, "topic", "t", nil, "filter by topic (repeatable)")
+	flags.BoolVar(&f.IncludeArchived, "include-archived", false, "include archived repos")
+	flags.BoolVar(&f.IncludeForks, "include-forks", false, "include forked repos")
+	flags.StringVarP(&f.Visibility, "visibility", "v", "all", "filter by visibility: all, public, private")
+	flags.StringVarP(&f.Language, "language", "l", "", "filter by primary language")
+	flags.StringArrayVarP(&f.Labels, "label", "L", nil, "filter by manifest label (key=value or key, repeatable)")
+	flags.StringVarP(&f.Group, "group", "g", "", "filter by manifest group")
 }
 
 // Apply filters a slice of repos. mf may be nil; manifest-based filters are

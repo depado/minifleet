@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/depado/minifleet/internal/fleet"
+	"github.com/depado/minifleet/internal/git"
 	"github.com/depado/minifleet/internal/ui"
 )
 
@@ -82,7 +83,7 @@ Examples:
 			ctx := cmd.Context()
 			targets := discoverFleets(conf)
 			if len(targets) == 0 {
-				ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet sync <owner>' first.")
+				ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet discover <owner>' first.")
 				return nil
 			}
 
@@ -93,28 +94,15 @@ Examples:
 			var planned []fleetTasks
 			totalCount := 0
 			for _, t := range targets {
-				mf := loadFleetManifest(t)
-				tasks, err := fleet.Scan(t.Dir, filters.IncludeRegex, mf)
+				tasks, err := reposForTarget(t, filters)
 				if err != nil {
 					return fmt.Errorf("scan %s: %w", t.Dir, err)
 				}
-				tasksWithName := make([]taskWithName, len(tasks))
-				for i, tk := range tasks {
-					tasksWithName[i] = taskWithName{RepoName: tk.RepoName, FullName: tk.FullName, ID: tk.ID, Dir: tk.Dir}
-				}
-				tasksWithName, err = filters.ApplyTasks(tasksWithName, mf)
-				if err != nil {
-					return err
-				}
-				filtered := make([]fleet.RepoTask, len(tasksWithName))
-				for i, tn := range tasksWithName {
-					filtered[i] = fleet.RepoTask{RepoName: tn.RepoName, ID: tn.ID, FullName: tn.FullName, Dir: tn.Dir}
-				}
-				if len(filtered) == 0 {
+				if len(tasks) == 0 {
 					continue
 				}
-				planned = append(planned, fleetTasks{target: t, tasks: filtered})
-				totalCount += len(filtered)
+				planned = append(planned, fleetTasks{target: t, tasks: tasks})
+				totalCount += len(tasks)
 			}
 
 			if totalCount == 0 {
@@ -186,6 +174,9 @@ Examples:
 					ui.DefaultPrint(fmt.Sprintf("[bold]%s[/] [dim](%s)[/]", p.target.Owner, p.target.Dir))
 				}
 				result := executor.Run(ctx, p.tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
+					if !git.IsRepo(task.Dir) {
+						return nil, &fleet.SkipError{Reason: "not cloned"}
+					}
 					return runOneRepo(ctx, task, input, shell, useLive, jsonMode, display)
 				})
 				if !useLive && !jsonMode {

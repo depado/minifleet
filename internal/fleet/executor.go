@@ -3,6 +3,7 @@ package fleet
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -81,9 +82,11 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 		workers = len(tasks)
 	}
 
+	slog.Debug("executor starting", "tasks", len(tasks), "workers", workers)
+
 	var p *progress.Progress
 	var overallID *progress.TaskID
-	var slots []progress.TaskID
+	var slotSection *progress.Section
 
 	if e.cfg.Progress && e.cfg.ProgressConfig.Description != "" {
 		p = progress.New(
@@ -99,7 +102,7 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 			progress.WithRefreshRate(10),
 		)
 
-		slotSection := p.AddSection(
+		slotSection = p.AddSection(
 			progress.WithSectionColumns(
 				progress.NewSpinnerColumn(
 					progress.WithSpinnerName("dots"),
@@ -114,11 +117,6 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 		total := float64(len(tasks))
 		tid := p.AddTask(fmt.Sprintf("[bold]%s[/]", e.cfg.ProgressConfig.Description), &total)
 		overallID = &tid
-
-		slots = make([]progress.TaskID, workers)
-		for i := range slots {
-			slots[i] = slotSection.AddTask("[dim]idle[/]", nil)
-		}
 	}
 
 	taskCh := make(chan RepoTask, len(tasks))
@@ -137,21 +135,33 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
-		go func(slotIdx int) {
+		go func() {
 			defer wg.Done()
+			var slotID progress.TaskID
+			hasSlot := false
 			for {
 				select {
 				case <-ctx.Done():
+					if hasSlot {
+						p.RemoveTask(slotID)
+					}
 					return
 				case task, ok := <-taskCh:
 					if !ok {
+						if hasSlot {
+							p.RemoveTask(slotID)
+						}
 						return
 					}
 
-					if p != nil && slotIdx < len(slots) {
-						p.Update(slots[slotIdx], progress.TaskUpdateConfig{
-							Description: new(fmt.Sprintf("[cyan]%s[/]", task.RepoName)),
-						})
+					if hasSlot {
+						p.RemoveTask(slotID)
+						hasSlot = false
+					}
+
+					if p != nil {
+						slotID = slotSection.AddTask(fmt.Sprintf("[cyan]%s[/]", task.RepoName), nil)
+						hasSlot = true
 					}
 
 					taskStart := time.Now()
@@ -171,8 +181,7 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 						succeeded.Add(1)
 					}
 
-					if p != nil && slotIdx < len(slots) {
-						p.ResetTask(slots[slotIdx], false)
+					if p != nil {
 						var desc string
 						switch status {
 						case StatusSuccess:
@@ -182,11 +191,12 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 						case StatusFailed:
 							desc = fmt.Sprintf("[red]%s[/]", task.RepoName)
 						}
-						p.Update(slots[slotIdx], progress.TaskUpdateConfig{Description: new(desc)})
+						p.Update(slotID, progress.TaskUpdateConfig{Description: new(desc)})
 						if len(taskCh) > 0 {
 							time.Sleep(300 * time.Millisecond)
-							p.Update(slots[slotIdx], progress.TaskUpdateConfig{Description: new("[dim]idle[/]")})
 						}
+						p.RemoveTask(slotID)
+						hasSlot = false
 					}
 
 					if p != nil && overallID != nil {
@@ -204,14 +214,11 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 					mu.Unlock()
 				}
 			}
-		}(i)
+		}()
 	}
 	wg.Wait()
 
 	if p != nil {
-		for _, tid := range slots {
-			p.RemoveTask(tid)
-		}
 		p.Done(*overallID, fmt.Sprintf("[bold]%s[/]", e.cfg.ProgressConfig.Description))
 	}
 

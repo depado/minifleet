@@ -38,7 +38,7 @@ func newStatusCmd() *cobra.Command {
 			ctx := cmd.Context()
 			targets := discoverFleets(conf)
 			if len(targets) == 0 {
-				ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet sync <owner>' first.")
+				ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet discover <owner>' first.")
 				return nil
 			}
 
@@ -73,28 +73,12 @@ func newStatusCmd() *cobra.Command {
 }
 
 func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters, format string) ([]statusRow, error) {
-	mf := loadFleetManifest(t)
-
-	tasks, err := fleet.Scan(t.Dir, f.IncludeRegex, mf)
+	tasks, err := reposForTarget(t, f)
 	if err != nil {
 		return nil, fmt.Errorf("scan %s: %w", t.Dir, err)
 	}
 
-	tasksWithName := make([]taskWithName, len(tasks))
-	for i, tk := range tasks {
-		tasksWithName[i] = taskWithName{RepoName: tk.RepoName, FullName: tk.FullName, ID: tk.ID, Dir: tk.Dir}
-	}
-	tasksWithName, err = f.ApplyTasks(tasksWithName, mf)
-	if err != nil {
-		return nil, err
-	}
-
-	filtered := make([]fleet.RepoTask, len(tasksWithName))
-	for i, tn := range tasksWithName {
-		filtered[i] = fleet.RepoTask{RepoName: tn.RepoName, ID: tn.ID, FullName: tn.FullName, Dir: tn.Dir}
-	}
-
-	if len(filtered) == 0 {
+	if len(tasks) == 0 {
 		return nil, nil
 	}
 
@@ -103,12 +87,11 @@ func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters
 		Progress:    false,
 	})
 
-	result := exec.Run(ctx, filtered, func(ctx context.Context, task fleet.RepoTask) (any, error) {
-		status, err := git.Status(ctx, task.Dir)
-		if err != nil {
-			return nil, err
+	result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
+		if !git.IsRepo(task.Dir) {
+			return nil, &fleet.SkipError{Reason: "not cloned"}
 		}
-		return status, nil
+		return git.Status(ctx, task.Dir)
 	})
 
 	out := make([]statusRow, 0, len(result.Results))

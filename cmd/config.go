@@ -16,7 +16,6 @@ type configFile struct {
 		Host  string `yaml:"host,omitempty"`
 	} `yaml:"github"`
 	Fleet struct {
-		Base        string            `yaml:"base"`
 		Shallow     bool              `yaml:"shallow,omitempty"`
 		Concurrent  int               `yaml:"concurrent"`
 		KnownFleets map[string]string `yaml:"known_fleets,omitempty"`
@@ -36,7 +35,6 @@ type configFile struct {
 func newInitCmd() *cobra.Command {
 	var (
 		token string
-		base  string
 		show  bool
 	)
 
@@ -57,11 +55,7 @@ func newInitCmd() *cobra.Command {
 			if token == "" {
 				token = os.Getenv("GITHUB_TOKEN")
 			}
-			if base == "" {
-				base = conf.Fleet.Base
-			}
 			conf.GitHub.Token = token
-			conf.Fleet.Base = base
 
 			if err := writeConfigFile(buildConfigFile(conf)); err != nil {
 				return err
@@ -72,7 +66,6 @@ func newInitCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&token, "token", "t", "", "GitHub personal access token")
-	cmd.Flags().StringVarP(&base, "base", "b", "", "base directory for clones")
 	cmd.Flags().BoolVarP(&show, "show", "s", false, "show current configuration")
 
 	return cmd
@@ -84,7 +77,6 @@ func buildConfigFile(conf *Conf) configFile {
 	cfg := configFile{}
 	cfg.GitHub.Token = conf.GitHub.Token
 	cfg.GitHub.Host = conf.GitHub.Host
-	cfg.Fleet.Base = conf.Fleet.Base
 	cfg.Fleet.Shallow = conf.Fleet.Shallow
 	cfg.Fleet.Concurrent = conf.Fleet.Concurrent
 	cfg.Fleet.KnownFleets = conf.Fleet.KnownFleets
@@ -144,7 +136,6 @@ func RegisterFleet(conf *Conf, owner, dir string) error {
 
 func printConfig(conf *Conf) {
 	fmt.Printf("Config path:   %s\n", ConfigPath())
-	fmt.Printf("Base dir:      %s\n", conf.Fleet.Base)
 	fmt.Printf("Concurrency:   %d\n", conf.Fleet.Concurrent)
 	fmt.Printf("GitHub host:   %s\n", conf.GitHub.Host)
 	fmt.Printf("Log level:     %s\n", conf.Log.Level)

@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -31,6 +32,8 @@ func Scan(fleetDir string, targetRegex string, mf *manifest.FleetManifest) ([]Re
 	ignored := ignoredSet(mf)
 	byShort := shortToFullName(mf)
 
+	slog.Debug("scanning fleet directory", "dir", fleetDir, "entries", len(entries))
+
 	var tasks []RepoTask
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -43,9 +46,11 @@ func Scan(fleetDir string, targetRegex string, mf *manifest.FleetManifest) ([]Re
 			continue
 		}
 		if pattern != nil && !pattern.MatchString(name) {
+			slog.Debug("skipping repo: does not match regex", "repo", name)
 			continue
 		}
 		if isIgnored(ignored, name, byShort[name]) {
+			slog.Debug("skipping repo: ignored", "repo", name)
 			continue
 		}
 
@@ -61,6 +66,7 @@ func Scan(fleetDir string, targetRegex string, mf *manifest.FleetManifest) ([]Re
 		})
 	}
 
+	slog.Debug("scan complete", "dir", fleetDir, "tasks", len(tasks))
 	return tasks, nil
 }
 

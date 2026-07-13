@@ -26,97 +26,33 @@ func newPRsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "prs [owner]",
 		Short: "List open pull requests across repositories with CI and review status",
-		Args:  cobra.ExactArgs(1),
+		Long:  "Without an owner, shows PRs for the fleet in CWD (or all known fleets).\nWith an owner, uses the local manifest for the repo list; falls back to fetching the repo list from the API if no manifest exists.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, err := confFromCtx(cmd)
 			if err != nil {
 				return err
 			}
 
-			owner := args[0]
 			ctx := cmd.Context()
+
+			if len(args) == 0 {
+				return prsAll(ctx, conf, filters, state, author, noDraft, format)
+			}
+
+			owner := args[0]
 			prov := github.New(conf.GitHub.Token, conf.GitHub.Host)
 
-			isOrg, err := prov.DetectOwner(ctx, owner)
-			if err != nil {
-				return fmt.Errorf("detect owner: %w", err)
-			}
-
-			repos, err := prov.ListRepos(ctx, owner, provider.ListOptions{
-				Visibility: filters.Visibility,
-				IsOrg:      isOrg,
-			})
-			if err != nil {
-				return fmt.Errorf("list repos: %w", err)
-			}
-
 			target, _ := resolveFleet(conf, prov.Host(), owner)
-			mf := loadFleetManifest(target)
-			repos, err = filters.Apply(repos, mf)
+			tasks, err := manifestToTasks(target, filters)
 			if err != nil {
 				return err
 			}
-
-			tasks := make([]fleet.RepoTask, len(repos))
-			for i, r := range repos {
-				tasks[i] = fleet.RepoTask{
-					RepoName: r.Name,
-					ID:       r.FullName,
-					FullName: r.FullName,
-				}
+			if len(tasks) == 0 {
+				return prsFromAPI(ctx, conf, prov, owner, filters, state, author, noDraft, format)
 			}
 
-			exec := fleet.NewExecutor(fleet.ExecutorConfig{
-				Concurrency: conf.Fleet.Concurrent,
-				Progress:    conf.UI.Progress,
-				ProgressConfig: fleet.ProgressConfig{
-					Description: "Fetching pull requests",
-				},
-			})
-
-			result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
-				prs, err := prov.ListPullRequests(ctx, owner, task.RepoName, provider.ListPROptions{
-					State: state,
-					Sort:  "updated",
-					Limit: 0,
-				})
-				if err != nil {
-					return nil, err
-				}
-
-				if author != "" {
-					filtered := prs[:0]
-					for _, pr := range prs {
-						if pr.Author == author {
-							filtered = append(filtered, pr)
-						}
-					}
-					prs = filtered
-				}
-
-				if noDraft {
-					filtered := prs[:0]
-					for _, pr := range prs {
-						if !pr.Draft {
-							filtered = append(filtered, pr)
-						}
-					}
-					prs = filtered
-				}
-
-				if len(prs) == 0 {
-					return nil, &fleet.SkipError{Reason: "no matching PRs"}
-				}
-
-				return prs, nil
-			})
-
-			switch format {
-			case "json":
-				return outputPRsJSON(result)
-			default:
-				return outputPRsTable(result)
-			}
+			return execPRs(ctx, conf, prov, owner, tasks, state, author, noDraft, format)
 		},
 	}
 
@@ -127,6 +63,116 @@ func newPRsCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json")
 
 	return cmd
+}
+
+func prsAll(ctx context.Context, conf *Conf, f Filters, state, author string, noDraft bool, format string) error {
+	targets := discoverFleets(conf)
+	if len(targets) == 0 {
+		ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet discover <owner>' first.")
+		return nil
+	}
+
+	prov := github.New(conf.GitHub.Token, conf.GitHub.Host)
+	for _, t := range targets {
+		tasks, err := manifestToTasks(t, f)
+		if err != nil {
+			return err
+		}
+		if len(tasks) == 0 {
+			continue
+		}
+		if err := execPRs(ctx, conf, prov, t.Owner, tasks, state, author, noDraft, format); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func prsFromAPI(ctx context.Context, conf *Conf, prov provider.Provider, owner string, f Filters, state, author string, noDraft bool, format string) error {
+	isOrg, err := prov.DetectOwner(ctx, owner)
+	if err != nil {
+		return fmt.Errorf("detect owner: %w", err)
+	}
+
+	repos, err := prov.ListRepos(ctx, owner, provider.ListOptions{
+		Visibility: f.Visibility,
+		IsOrg:      isOrg,
+	})
+	if err != nil {
+		return fmt.Errorf("list repos: %w", err)
+	}
+
+	target, _ := resolveFleet(conf, prov.Host(), owner)
+	mf := loadFleetManifest(target)
+	repos, err = f.Apply(repos, mf)
+	if err != nil {
+		return err
+	}
+
+	tasks := make([]fleet.RepoTask, len(repos))
+	for i, r := range repos {
+		tasks[i] = fleet.RepoTask{
+			RepoName: r.Name,
+			ID:       r.FullName,
+			FullName: r.FullName,
+		}
+	}
+
+	return execPRs(ctx, conf, prov, owner, tasks, state, author, noDraft, format)
+}
+
+func execPRs(ctx context.Context, conf *Conf, prov provider.Provider, owner string, tasks []fleet.RepoTask, state, author string, noDraft bool, format string) error {
+	exec := fleet.NewExecutor(fleet.ExecutorConfig{
+		Concurrency: conf.Fleet.Concurrent,
+		Progress:    conf.UI.Progress,
+		ProgressConfig: fleet.ProgressConfig{
+			Description: "Fetching pull requests",
+		},
+	})
+
+	result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
+		prs, err := prov.ListPullRequests(ctx, owner, task.RepoName, provider.ListPROptions{
+			State: state,
+			Sort:  "updated",
+			Limit: 0,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if author != "" {
+			filtered := prs[:0]
+			for _, pr := range prs {
+				if pr.Author == author {
+					filtered = append(filtered, pr)
+				}
+			}
+			prs = filtered
+		}
+
+		if noDraft {
+			filtered := prs[:0]
+			for _, pr := range prs {
+				if !pr.Draft {
+					filtered = append(filtered, pr)
+				}
+			}
+			prs = filtered
+		}
+
+		if len(prs) == 0 {
+			return nil, &fleet.SkipError{Reason: "no matching PRs"}
+		}
+
+		return prs, nil
+	})
+
+	switch format {
+	case "json":
+		return outputPRsJSON(result)
+	default:
+		return outputPRsTable(result)
+	}
 }
 
 type prRow struct {

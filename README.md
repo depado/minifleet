@@ -17,6 +17,10 @@
   <a href="https://github.com/depado/minifleet/pkgs/container/minifleet"><img src="https://shieldcn.dev/badge/container-ghcr.io%2Fdepado%2Fminifleet-2496ED.svg?logo=docker&variant=branded" alt="container image" /></a>
 </p>
 
+<p align="center">
+  <img alt="minifleet demo" src="vhs/minifleet.gif">
+</p>
+
 > [!WARNING]
 > **Work in progress.** minifleet is under active development. APIs, commands, and behavior may change.
 
@@ -24,6 +28,7 @@
 - [Quick Start](#quick-start)
 - [Installation](#installation)
 - [Commands](#commands)
+  - [`minifleet discover`](#minifleet-discover)
   - [`minifleet sync`](#minifleet-sync)
   - [`minifleet list`](#minifleet-list)
   - [`minifleet status`](#minifleet-status)
@@ -41,12 +46,13 @@
 
 ## Features
 
-- **Sync** — Clone missing repos and pull existing ones in a single command. Auto-detects org vs. user via the GitHub API. Optional shallow clones. Host configurable for GitHub Enterprise.
+- **Discover** — Fetch repositories from the GitHub API, apply filters, and create or update a `fleet.yml` manifest. No cloning — separate API concerns from local operations.
+- **Sync** — Clone missing repos and pull existing ones based on the `fleet.yml` manifest. Purely local: no network calls, no token needed, works offline.
 - **Run across repos** — `run -- "<command>"` executes a shell command in every repository directory (or a filtered subset), with summary or live block output.
-- **Remote discovery** — `list` shows repos from the API with filters for archived, forks, topics, visibility, language, labels, and groups. Output as table, JSON, or YAML manifest.
+- **Local-first listing** — `list` shows repos from the manifest when available, with an API fallback when no manifest exists. Output as table, JSON, or YAML.
 - **Local status dashboard** — See the state of all cloned repos: current branch, commits ahead/behind remote, uncommitted changes, stashed changes.
-- **Cross-repo PR dashboard** — List open pull requests across all repos with CI status (success/pending/failure) and review status (approved/changes/pending) in a single table.
-- **Unified filters** — Every command accepts the same filter flags: `--include-regex`, `--exclude-regex`, `--include`, `--exclude`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, `--language`, `--label`, `--group`.
+- **Cross-repo PR dashboard** — List open pull requests across all repos with CI status (success/pending/failure) and review status (approved/changes/pending). Repo list comes from the manifest; PR data from the API.
+- **Unified filters** — Every command that queries the API or filters repos accepts the same filter flags: `--include-regex`, `--exclude-regex`, `--include`, `--exclude`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, `--language`, `--label`, `--group`.
 - **Per-directory fleets** — A `fleet.yml` lives alongside the repos it describes; `config.yml` tracks known fleet directories in `known_fleets`. No path bookkeeping per repo.
 - **One-shot mode** — `--fleet.path <dir>` bypasses discovery for ad-hoc operations in any directory.
 - **GitHub Enterprise** — `--github.host <host>` retargets the API and clone URLs at a GHE instance.
@@ -67,22 +73,31 @@ A token with `repo` scope is needed for private repos; public repos work unauthe
 ### 2. Initialize config
 
 ```bash
-minifleet init --token ghp_xxxx --base ~/dev
+minifleet init --token ghp_xxxx
 # or: minifleet init -s   # show current configuration
 ```
 
-### 3. Sync an organization or user
+### 3. Discover and create a manifest
 
 ```bash
-cd ~/dev/github.com/depado
-minifleet sync depado
+minifleet discover depado
+# Filter with flags:
+minifleet discover depado --visibility public --language go
 ```
 
-Repos are cloned into the current directory (`~/dev/github.com/depado/<repo>`). A `fleet.yml` is written next to them, and the directory is registered in `config.yml` under `fleet.known_fleets`. Repos that already exist locally are pulled (`git fetch` + `git rebase --autostash`). Ignored repos (see manifest) are skipped.
+Fetches repositories from the GitHub API, writes `fleet.yml` to the current directory, and registers the fleet in `config.yml`. Does **not** clone anything.
 
-Run the same command from anywhere — minifleet will look up `depado` in `known_fleets` and operate on the registered directory.
+### 4. Sync (clone/pull)
 
-### 4. Local status across the fleet
+```bash
+minifleet sync depado
+# or, from anywhere if the fleet is known:
+minifleet sync
+```
+
+Repos listed in `fleet.yml` are cloned into the fleet directory (`~/dev/github.com/depado/<repo>`). Existing repos are pulled (`git fetch` + `git rebase --autostash`). Ignored repos (see manifest) are skipped. No API calls — works offline.
+
+### 5. Local status across the fleet
 
 ```bash
 minifleet status
@@ -100,7 +115,7 @@ minifleet status
 
 `status` picks up the fleet in CWD when invoked inside a fleet directory, or iterates all `known_fleets` otherwise.
 
-### 5. Open PRs with CI status
+### 6. Open PRs with CI status
 
 ```bash
 minifleet prs depado
@@ -136,24 +151,15 @@ Prerequisites: `git` on `$PATH`.
 
 ## Commands
 
-Every command accepts the [global flags](#configuration) and the [filter flags](#filters).
+Every command accepts the [global flags](#configuration). Commands that talk to the API or filter repos accept [filter flags](#filters).
 
-### `minifleet sync`
+### `minifleet discover`
 
 ```
-minifleet sync [owner] [flags]
+minifleet discover <owner> [flags]
 ```
 
-Clone missing repos and pull existing ones for a GitHub user or organization. When no owner is given, syncs the fleet in CWD (or all known fleets if not in one).
-
-**Fleet directory resolution** (first match wins):
-
-1. `--fleet.path <dir>` — explicit one-shot override
-2. CWD if it contains a `fleet.yml` with matching owner
-3. `known_fleets[owner]` in `config.yml`
-4. Default: `{base}/{host}/{owner}/` (created on first sync)
-
-After a successful sync, `known_fleets[owner]` is updated in `config.yml` so the fleet is discoverable from any directory.
+Fetch repositories from the GitHub API, apply filters, and create or update `fleet.yml` for the given owner. Merges with any existing manifest, preserving user-set fields (`labels`, `protocol`, `ignored`, `groups`). Does **not** clone or pull repositories — use `sync` for that.
 
 ```
 Flags:
@@ -173,29 +179,62 @@ Flags:
 **Examples:**
 
 ```bash
-# Sync an org from its fleet directory
-cd ~/dev/github.com/depado
+# Discover all public Go repos
+minifleet discover depado --visibility public --language go
+
+# Discover with a custom path
+minifleet --fleet.path ~/work/depado discover depado
+
+# Refresh an existing manifest (re-fetch, re-apply filters, merge)
+minifleet discover depado
+```
+
+Run `discover` again at any time to pick up new repos or refresh API-tracked metadata (`topics`, `language`, `archived`, etc.).
+
+### `minifleet sync`
+
+```
+minifleet sync [owner] [flags]
+```
+
+Clone missing repos and pull existing ones from the `fleet.yml` manifest. Purely local — no API calls. When no owner is given, syncs the fleet in CWD (or all known fleets if not in one). Errors if no manifest exists (run `discover` first).
+
+**Fleet directory resolution** (first match wins):
+
+1. `--fleet.path <dir>` — explicit one-shot override
+2. Current working directory
+3. `known_fleets[owner]` in `config.yml`
+
+After a successful sync, `known_fleets[owner]` is updated in `config.yml` so the fleet is discoverable from any directory.
+
+```
+Flags:
+  --format, -f string        table, json (default: table)
+```
+
+**Examples:**
+
+```bash
+# Sync a single fleet
 minifleet sync depado
 
-# Sync only Go services into a custom directory, shallow
-minifleet --fleet.path ~/scratch/go-services --fleet.shallow sync depado --language Go
-
-# Sync multiple known fleets at once
+# Sync all known fleets at once
 minifleet sync
 
 # GitHub Enterprise
 minifleet --github.host github.example.com sync my-org
-```
 
-On each sync, the manifest is merged with the GitHub API response: API-tracked fields (`topics`, `language`, `archived`, ...) are overwritten from the API; user-set fields (`labels`, `protocol`, `ignored`) are preserved.
+# Shallow clones
+minifleet --fleet.shallow sync depado
+```
 
 ### `minifleet list`
 
 ```
-minifleet list <owner> [flags]
+minifleet list [owner] [flags]
 ```
 
-List repositories from the GitHub API. Auto-detects org vs. user. Output as `table` (default), `json`, or `yaml` (a seed manifest you can drop into a fleet directory as `fleet.yml`).
+List repositories. Uses the local manifest when available; falls back to fetching from the GitHub API if no manifest exists. Without an owner, lists repos from the fleet in CWD (or all known fleets). Output as `table` (default), `json`, or `yaml`.
 
 ```
 Flags:
@@ -215,9 +254,17 @@ Flags:
 ```
 
 ```bash
-minifleet list depado --language Go
+# List from manifest (in a fleet directory)
+minifleet list
+
+# List from API fallback (no manifest exists)
+minifleet list depado --language go
+
+# JSON output
 minifleet list depado --format json | jq '.[] | .name'
-minifleet list depado --format yaml > ~/dev/github.com/depado/fleet.yml  # seed a manifest
+
+# Generate a seed manifest
+minifleet list depado --format yaml > fleet.yml
 ```
 
 ### `minifleet status`
@@ -226,7 +273,7 @@ minifleet list depado --format yaml > ~/dev/github.com/depado/fleet.yml  # seed 
 minifleet status [flags]
 ```
 
-Walk the local fleet directory for git repos and show their status in a single table. Operates on the fleet in CWD when one is present, otherwise iterates all known fleets.
+Show git status for repos in the fleet. Uses the manifest as the source of truth for which repos to check; falls back to scanning the filesystem if no manifest exists. Operates on the fleet in CWD when one is present, otherwise iterates all known fleets. Repos not yet cloned are skipped.
 
 ```
 Flags:
@@ -237,7 +284,6 @@ Flags:
   --topic stringArray        filter by topic (via manifest)
   --include-archived         include repos flagged as archived in manifest
   --include-forks            include repos flagged as fork in manifest
-  --visibility string        filter by visibility (via manifest)
   --language string          filter by language (via manifest)
   --label stringArray        filter by manifest label
   --group string             filter by manifest group
@@ -247,10 +293,10 @@ Flags:
 ### `minifleet prs`
 
 ```
-minifleet prs <owner> [flags]
+minifleet prs [owner] [flags]
 ```
 
-Open pull requests across every repo of an owner with CI and review status.
+List open pull requests across repositories with CI and review status. Repo list comes from the manifest when available (API fallback if none exists). PR data is always fetched from the API. Without an owner, shows PRs for the fleet in CWD (or all known fleets).
 
 ```
 Flags:
@@ -277,7 +323,7 @@ Flags:
 minifleet run -- <command> [flags]
 ```
 
-Run a shell command in every local repository directory (or a filtered subset). Uses the existing executor for bounded concurrency and continue-on-error. Operates on the fleet in CWD or all known fleets (same discovery as `status`).
+Run a shell command in every local repository directory (or a filtered subset). Uses the manifest as the source of truth; falls back to filesystem scan if none exists. Repos not yet cloned are skipped. Operates on the fleet in CWD or all known fleets (same discovery as `status`).
 
 ```
 Flags:
@@ -288,7 +334,6 @@ Flags:
   --topic stringArray        filter by topic (via manifest)
   --include-archived         include archived repos
   --include-forks            include forked repos
-  --visibility string        filter by visibility (via manifest)
   --language string          filter by primary language (via manifest)
   --label stringArray        filter by manifest label
   --group string             filter by manifest group
@@ -345,7 +390,6 @@ Write `~/.config/minifleet/config.yml` with defaults, or show the current config
 ```
 Flags:
   -t, --token string   GitHub personal access token to write
-  -b, --base string    base directory for clones
   -s, --show           print current configuration
 ```
 
@@ -366,7 +410,6 @@ A **fleet directory** is any directory that contains a `fleet.yml`. It typically
 
 ```yaml
 fleet:
-  base: ~/dev
   known_fleets:
     depado: /home/depado/dev/github.com/depado
     work-org: /home/depado/work/github.com/work-org
@@ -378,15 +421,15 @@ Commands discover the active fleet(s) in this order:
 2. CWD has a `fleet.yml` (use CWD)
 3. all `known_fleets` (iterate)
 
-`sync <owner>` additionally consults `known_fleets[owner]` as a fallback when neither `--fleet.path` nor CWD applies, and registers the resulting directory on success.
+`discover <owner>` creates the manifest and registers the fleet in `known_fleets`. `sync <owner>` additionally consults `known_fleets[owner]` as a fallback and re-registers the directory on success.
 
 ## Filters
 
-Every command accepts the same filter flags so users get a consistent vocabulary:
+Every command that queries the API or filters repos accepts the same flags:
 
 | Flag                 | Type        | Behavior                                                                             |
 | -------------------- | ----------- | ------------------------------------------------------------------------------------ |
-| `--include-regex`    | regex       | Match on repo name (or local directory name for `status`)                            |
+| `--include-regex`    | regex       | Match on repo name                                                                   |
 | `--exclude-regex`    | regex       | Exclude repos whose name matches (wins over includes)                                |
 | `--include`          | stringArray | Include repo by exact name (repeatable)                                              |
 | `--exclude`          | stringArray | Exclude repo by exact name (repeatable, wins over includes)                          |
@@ -398,38 +441,46 @@ Every command accepts the same filter flags so users get a consistent vocabulary
 | `--label`            | stringArray | Match on manifest labels: `tier=1` (exact) or `tier` (any value). AND across labels. |
 | `--group`            | string      | Limit to repos in a manifest group                                                   |
 
+Filters are available on `discover`, `list`, `prs`, `status`, and `run`. `sync` does not accept filters — it operates on all repos in the manifest.
+
 Filters compose freely:
 
 ```bash
-# Go services labeled tier=1 in the backend group
-minifleet status --language go --label tier=1 --group backend
+# Discover Go services with tier=1 label in the backend group
+minifleet discover depado --language go --label tier=1 --group backend
+
+# Status of those repos
+minifleet status --group backend --label tier=1
 ```
 
-`--label` and `--group` consult the manifest; `--include-regex`, `--exclude-regex`, `--include`, `--exclude`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, and `--language` work from the API response or local scan alone.
+`--label` and `--group` consult the manifest; `--include-regex`, `--exclude-regex`, `--include`, `--exclude`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, and `--language` work from the manifest data or API response.
 
 ## One-shot mode
 
 Pass `--fleet.path <dir>` to operate on any directory as if it were a fleet directory, bypassing the normal CWD/known_fleets discovery:
 
 ```bash
-# Drop the org's repos directly under ~/scratch/my-org
+# Discover repos directly into a custom directory
+minifleet --fleet.path ~/scratch/my-org discover depado --visibility public
+
+# Sync those same repos
 minifleet --fleet.path ~/scratch/my-org sync depado
 
-# Status of those same repos
+# Status of those repos
 minifleet --fleet.path ~/scratch/my-org status
 
 # Run a command in them
 minifleet --fleet.path ~/scratch/my-org run -- "git log --oneline -1"
 ```
 
-In one-shot mode, all subcommands treat `<dir>` as the fleet directory: a `fleet.yml` is read if present, repos are scanned directly inside it. `sync` registers the directory in `known_fleets` on success.
+In one-shot mode, all commands treat `<dir>` as the fleet directory: a `fleet.yml` is read if present, repos are discovered/scanned directly inside it. `discover` and `sync` register the directory in `known_fleets` on success.
 
 ## Shallow clones
 
 `--fleet.shallow` toggles `git clone --depth 1 --filter=blob:none` for speed:
 
 ```bash
-minifleet sync depado --fleet.shallow
+minifleet --fleet.shallow sync depado
 ```
 
 Shallow clones are smaller and faster but lack full history. They cannot push most commits without unshallowing. Use for one-shots, dashboards, or large fleets where you only need the latest tree. The default (full clone) is recommended for fleets you intend to push from.
@@ -438,15 +489,13 @@ Shallow is also available as a config value `fleet.shallow: true`.
 
 ## Manifest File
 
-A `fleet.yml` lives at the root of a fleet directory. It declares metadata about your repos that GitHub's API doesn't track. It's **optional** — every command works without one — but it enables groups, custom labels, per-repo clone protocol, and ignored repos.
-
-Generate a seed from the API and drop it into the fleet directory:
+A `fleet.yml` lives at the root of a fleet directory. It is the source of truth for which repos belong to the fleet and carries metadata that GitHub's API doesn't track. Create one with `discover` and edit it to add groups, labels, protocols, and ignored repos.
 
 ```bash
-minifleet list depado --format yaml > ~/dev/github.com/depado/fleet.yml
+minifleet discover depado --visibility public
 ```
 
-Then edit it:
+Then edit the generated `fleet.yml`:
 
 ```yaml
 version: "1"
@@ -477,11 +526,11 @@ repos:
 
 ### Field ownership
 
-| Category    | Fields                                                            | Owner                          |
-| ----------- | ----------------------------------------------------------------- | ------------------------------ |
-| API-tracked | `topics`, `language`, `archived`, `fork`, `private`, `updated_at` | `sync` overwrites from API     |
-| User-set    | `labels`, `protocol`, `ignored`                                   | User — never touched by `sync` |
-| User-set    | `groups`                                                          | User — never touched by `sync` |
+| Category    | Fields                                                            | Owner                                   |
+| ----------- | ----------------------------------------------------------------- | --------------------------------------- |
+| API-tracked | `topics`, `language`, `archived`, `fork`, `private`, `updated_at` | `discover` overwrites from API          |
+| User-set    | `labels`, `protocol`, `ignored`                                   | User — preserved across `discover` runs |
+| User-set    | `groups`                                                          | User — never touched by `discover`      |
 
 ### Groups
 
@@ -490,6 +539,7 @@ Use groups to scope filters:
 ```bash
 minifleet status --group backend
 minifleet run --group frontend -- "make lint"
+minifleet discover depado --group backend
 ```
 
 ### Per-repo protocol
@@ -512,7 +562,6 @@ github:
   host: github.com # Use a custom host for GitHub Enterprise
 
 fleet:
-  base: ~/dev # Base directory for default fleet layout ({base}/{host}/{owner})
   path: "" # (optional) one-shot override; bypass discovery
   shallow: false # Use shallow clones by default
   concurrent: 5 # Max concurrent operations
@@ -532,21 +581,20 @@ ui:
 
 ### Reference
 
-| Key                  | Env                          | Default      | Description                                        |
-| -------------------- | ---------------------------- | ------------ | -------------------------------------------------- |
-| `github.token`       | `GITHUB_TOKEN`               | -            | GitHub personal access token                       |
-| `github.host`        | `MINIFLEET_GITHUB_HOST`      | `github.com` | GitHub host (GHE: `github.example.com`)            |
-| `fleet.base`         | `MINIFLEET_FLEET_BASE`       | `~/dev`      | Base directory for default fleet layout            |
-| `fleet.path`         | `MINIFLEET_FLEET_PATH`       | -            | One-shot directory override                        |
-| `fleet.shallow`      | `MINIFLEET_FLEET_SHALLOW`    | `false`      | Use shallow clones                                 |
-| `fleet.concurrent`   | `MINIFLEET_FLEET_CONCURRENT` | `5`          | Max concurrent operations                          |
-| `fleet.known_fleets` | -                            | -            | Map of owner → fleet directory (managed by `sync`) |
-| `log.level`          | `MINIFLEET_LOG_LEVEL`        | `info`       | `debug`, `info`, `warn`, `error`                   |
-| `log.format`         | `MINIFLEET_LOG_FORMAT`       | `text`       | `json` or `text`                                   |
-| `log.source`         | `MINIFLEET_LOG_SOURCE`       | `false`      | Include source file in logs                        |
-| `log.color`          | `MINIFLEET_LOG_COLOR`        | `auto`       | `auto`, `always`, `never`                          |
-| `ui.progress`        | `MINIFLEET_UI_PROGRESS`      | `true`       | Show progress bars                                 |
-| `ui.color`           | `MINIFLEET_UI_COLOR`         | `true`       | Enable colored output                              |
+| Key                  | Env                          | Default      | Description                                                  |
+| -------------------- | ---------------------------- | ------------ | ------------------------------------------------------------ |
+| `github.token`       | `GITHUB_TOKEN`               | -            | GitHub personal access token                                 |
+| `github.host`        | `MINIFLEET_GITHUB_HOST`      | `github.com` | GitHub host (GHE: `github.example.com`)                      |
+| `fleet.path`         | `MINIFLEET_FLEET_PATH`       | -            | One-shot directory override                                  |
+| `fleet.shallow`      | `MINIFLEET_FLEET_SHALLOW`    | `false`      | Use shallow clones                                           |
+| `fleet.concurrent`   | `MINIFLEET_FLEET_CONCURRENT` | `5`          | Max concurrent operations                                    |
+| `fleet.known_fleets` | -                            | -            | Map of owner → fleet directory (managed by `discover`/`sync`) |
+| `log.level`          | `MINIFLEET_LOG_LEVEL`        | `info`       | `debug`, `info`, `warn`, `error`                             |
+| `log.format`         | `MINIFLEET_LOG_FORMAT`       | `text`       | `json` or `text`                                             |
+| `log.source`         | `MINIFLEET_LOG_SOURCE`       | `false`      | Include source file in logs                                  |
+| `log.color`          | `MINIFLEET_LOG_COLOR`        | `auto`       | `auto`, `always`, `never`                                    |
+| `ui.progress`        | `MINIFLEET_UI_PROGRESS`      | `true`       | Show progress bars                                           |
+| `ui.color`           | `MINIFLEET_UI_COLOR`         | `true`       | Enable colored output                                        |
 
 ## Concurrency
 
@@ -554,10 +602,10 @@ Every bulk operation uses the same bounded-goroutine executor. Configure it glob
 
 ```bash
 # Clone with 10 concurrent git processes
-minifleet sync depado --fleet.concurrent 10
+minifleet --fleet.concurrent 10 sync depado
 
 # Fetch PRs with 3 concurrent API calls (staying under secondary rate limits)
-minifleet prs depado --fleet.concurrent 3
+minifleet --fleet.concurrent 3 prs depado
 ```
 
 - A bounded goroutine pool processes tasks from a channel.
@@ -591,9 +639,10 @@ minifleet/
 │   ├── config.go              # init command, SaveConf, RegisterFleet, printConfig
 │   ├── flags.go               # Persistent flag definitions
 │   ├── filters.go             # Filters struct + Apply — shared by every command
-│   ├── fleet.go               # fleetTarget discovery (CWD / known_fleets / --path)
+│   ├── fleet.go               # fleetTarget discovery (CWD / known_fleets / --path), manifestToTasks, reposForTarget
+│   ├── discover.go            # discover command — API → fleet.yml
 │   ├── shared.go              # printBulkSummary helper
-│   ├── sync.go                # clone+pull; uses resolveFleet and manifest Index
+│   ├── sync.go                # clone+pull from manifest; syncFromManifest
 │   ├── list.go
 │   ├── status.go
 │   ├── prs.go
@@ -611,8 +660,9 @@ minifleet/
 ### Design principles
 
 - **Local-first**: repos live next to `fleet.yml`; the directory IS the fleet. No central registry needed.
+- **API / local separation**: `discover` talks to the API; `sync`, `status`, and `run` are purely local. The manifest is the explicit bridge.
 - **Discoverable**: `known_fleets` in `config.yml` lets commands run from anywhere; CWD is checked first.
-- **DRY**: every command is short. Filters, executor, and discovery are shared.
+- **DRY**: every command is short. Filters, executor, and discovery are shared via `manifestToTasks` and `reposForTarget`.
 - **LEAN**: one interface (`Provider`) for platform abstraction; function types elsewhere.
 - **No global state**: configuration flows from `PersistentPreRunE` → context → command `RunE`.
 - **Concurrency by default**: the `Executor` handles parallelism for every command.

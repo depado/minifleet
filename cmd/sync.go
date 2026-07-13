@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -18,15 +19,12 @@ import (
 )
 
 func newSyncCmd() *cobra.Command {
-	var (
-		filters Filters
-		format  string
-	)
+	var format string
 
 	cmd := &cobra.Command{
 		Use:   "sync [owner]",
 		Short: "Clone missing repos and pull existing ones",
-		Long:  "Sync repositories for a GitHub user or organization.\nIf no owner is given, syncs the fleet in CWD (or all known fleets if not in one).",
+		Long:  "Sync repositories listed in fleet.yml. Does not fetch from the API — run 'discover' first to create or refresh the manifest.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, err := confFromCtx(cmd)
@@ -45,9 +43,9 @@ func newSyncCmd() *cobra.Command {
 			}
 
 			if len(args) == 0 {
-				err = syncAll(ctx, conf, prov, filters, format, collect)
+				err = syncAll(ctx, conf, prov, format, collect)
 			} else {
-				err = syncOne(ctx, conf, prov, args[0], filters, format, collect)
+				err = syncOne(ctx, conf, prov, args[0], format, collect)
 			}
 			if err != nil {
 				return err
@@ -60,30 +58,29 @@ func newSyncCmd() *cobra.Command {
 		},
 	}
 
-	addFilterFlags(cmd, &filters)
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json")
 
 	return cmd
 }
 
-func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, f Filters, format string, collect func(*fleet.BulkResult)) error {
+func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, format string, collect func(*fleet.BulkResult)) error {
 	targets := discoverFleets(conf)
 	if len(targets) == 0 {
 		if format != "json" {
-			ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet sync <owner>' first.")
+			ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet discover <owner>' first.")
 		}
 		return nil
 	}
 
 	for _, t := range targets {
-		if err := syncOne(ctx, conf, prov, t.Owner, f, format, collect); err != nil {
+		if err := syncOne(ctx, conf, prov, t.Owner, format, collect); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner string, f Filters, format string, collect func(*fleet.BulkResult)) error {
+func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner string, format string, collect func(*fleet.BulkResult)) error {
 	host := prov.Host()
 	target, _ := resolveFleet(conf, host, owner)
 
@@ -92,115 +89,12 @@ func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner stri
 	}
 
 	mf := loadFleetManifest(target)
-	if mf != nil && mf.Owner != "" && mf.Owner != owner {
-		dir := filepath.Join(conf.Fleet.Base, host, owner)
-		target = fleetTarget{Owner: owner, Dir: dir}
-		mf = loadFleetManifest(target)
+
+	if mf == nil {
+		return fmt.Errorf("no fleet.yml found for %s — run 'minifleet discover %s' first", owner, owner)
 	}
 
-	isOrg, err := prov.DetectOwner(ctx, owner)
-	if err != nil {
-		return fmt.Errorf("detect owner: %w", err)
-	}
-
-	repos, err := prov.ListRepos(ctx, owner, provider.ListOptions{
-		Visibility: f.Visibility,
-		IsOrg:      isOrg,
-	})
-	if err != nil {
-		return fmt.Errorf("list repos: %w", err)
-	}
-
-	repos, err = f.Apply(repos, mf)
-	if err != nil {
-		return err
-	}
-	if len(repos) == 0 {
-		if format != "json" {
-			ui.PrintDim(fmt.Sprintf("No repositories found for %s", owner))
-		}
-		return nil
-	}
-
-	mf = manifest.Merge(mf, owner, repos)
-	idx := mf.Index()
-
-	if err := os.MkdirAll(target.Dir, 0o755); err != nil {
-		return fmt.Errorf("create fleet dir: %w", err)
-	}
-
-	shallow := conf.Fleet.Shallow
-
-	tasks := make([]fleet.RepoTask, len(repos))
-	for i, r := range repos {
-		dir := filepath.Join(target.Dir, r.Name)
-		tasks[i] = fleet.RepoTask{RepoName: r.Name, ID: r.FullName, FullName: r.FullName}
-		tasks[i].Dir = dir
-	}
-
-	exec := fleet.NewExecutor(fleet.ExecutorConfig{
-		Concurrency: conf.Fleet.Concurrent,
-		Progress:    conf.UI.Progress && format != "json",
-		ProgressConfig: fleet.ProgressConfig{
-			Description: fmt.Sprintf("Syncing %s", owner),
-		},
-	})
-
-	result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
-		dir := task.Dir
-
-		if git.IsRepo(dir) {
-			if mr := idx[task.ID]; mr != nil && mr.Ignored {
-				return nil, &fleet.SkipError{Reason: "ignored"}
-			}
-			return nil, git.Pull(ctx, dir)
-		}
-
-		if mr := idx[task.ID]; mr != nil && mr.Ignored {
-			return nil, &fleet.SkipError{Reason: "ignored"}
-		}
-
-		saved := ""
-		if mr := idx[task.ID]; mr != nil {
-			saved = mr.Protocol
-		}
-		if saved != "" {
-			url := prov.CloneURL(saved, task.ID)
-			if err := git.Clone(ctx, url, dir, shallow); err != nil {
-				return nil, err
-			}
-			return nil, nil
-		}
-
-		sshU := prov.CloneURL("ssh", task.ID)
-		httpsU := prov.CloneURL("https", task.ID)
-
-		protocol := "ssh"
-		if err := git.Clone(ctx, sshU, dir, shallow); err != nil {
-			if err := git.Clone(ctx, httpsU, dir, shallow); err != nil {
-				return nil, err
-			}
-			protocol = "https"
-		}
-		setProtocol(idx, task.ID, protocol)
-		return nil, nil
-	})
-
-	if result.Succeeded > 0 || result.Skipped > 0 {
-		_ = manifest.Save(mf, manifest.Path(target.Dir))
-		if err := RegisterFleet(conf, owner, target.Dir); err != nil {
-			if format != "json" {
-				ui.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
-			}
-		}
-	}
-
-	collect(result)
-
-	if format != "json" {
-		printBulkSummary(result, false)
-	}
-	return nil
+	return syncFromManifest(ctx, conf, prov, target, mf, format, collect)
 }
 
 type syncJSONResult struct {
@@ -260,4 +154,91 @@ func setProtocol(idx map[string]*manifest.ManifestRepo, fullName, protocol strin
 	if r := idx[fullName]; r != nil {
 		r.Protocol = protocol
 	}
+}
+
+func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t fleetTarget, mf *manifest.FleetManifest, format string, collect func(*fleet.BulkResult)) error {
+	idx := mf.Index()
+	shallow := conf.Fleet.Shallow
+
+	if err := os.MkdirAll(t.Dir, 0o755); err != nil {
+		return fmt.Errorf("create fleet dir: %w", err)
+	}
+
+	tasks := make([]fleet.RepoTask, 0, len(mf.Repos))
+	for _, r := range mf.Repos {
+		name := r.FullName
+		if i := strings.LastIndexByte(name, '/'); i >= 0 {
+			name = name[i+1:]
+		}
+		tasks = append(tasks, fleet.RepoTask{
+			RepoName: name,
+			ID:       r.FullName,
+			FullName: r.FullName,
+			Dir:      filepath.Join(t.Dir, name),
+		})
+	}
+
+	exec := fleet.NewExecutor(fleet.ExecutorConfig{
+		Concurrency: conf.Fleet.Concurrent,
+		Progress:    conf.UI.Progress && format != "json",
+		ProgressConfig: fleet.ProgressConfig{
+			Description: fmt.Sprintf("Syncing %s", t.Owner),
+		},
+	})
+
+	result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
+		dir := task.Dir
+
+		if git.IsRepo(dir) {
+			if mr := idx[task.ID]; mr != nil && mr.Ignored {
+				return nil, &fleet.SkipError{Reason: "ignored"}
+			}
+			return nil, git.Pull(ctx, dir)
+		}
+
+		if mr := idx[task.ID]; mr != nil && mr.Ignored {
+			return nil, &fleet.SkipError{Reason: "ignored"}
+		}
+
+		saved := ""
+		if mr := idx[task.ID]; mr != nil {
+			saved = mr.Protocol
+		}
+		if saved != "" {
+			url := prov.CloneURL(saved, task.ID)
+			if err := git.Clone(ctx, url, dir, shallow); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		}
+
+		sshU := prov.CloneURL("ssh", task.ID)
+		httpsU := prov.CloneURL("https", task.ID)
+
+		protocol := "ssh"
+		if err := git.Clone(ctx, sshU, dir, shallow); err != nil {
+			if err := git.Clone(ctx, httpsU, dir, shallow); err != nil {
+				return nil, err
+			}
+			protocol = "https"
+		}
+		setProtocol(idx, task.ID, protocol)
+		return nil, nil
+	})
+
+	if result.Succeeded > 0 || result.Skipped > 0 {
+		_ = manifest.Save(mf, manifest.Path(t.Dir))
+		if err := RegisterFleet(conf, t.Owner, t.Dir); err != nil {
+			if format != "json" {
+				ui.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
+			}
+		}
+	}
+
+	collect(result)
+
+	if format != "json" {
+		printBulkSummary(result, false)
+	}
+	return nil
 }

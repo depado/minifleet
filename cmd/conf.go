@@ -28,7 +28,6 @@ type GitHubConf struct {
 }
 
 type FleetConf struct {
-	Base        string            `mapstructure:"base"`
 	Path        string            `mapstructure:"path"` // one-shot override: clone into this directory
 	Shallow     bool              `mapstructure:"shallow"`
 	Concurrent  int               `mapstructure:"concurrent"`
@@ -129,10 +128,6 @@ func NewConf(cmd *cobra.Command) (*Conf, error) {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 
-	if conf.Fleet.Base == "" {
-		home, _ := os.UserHomeDir()
-		conf.Fleet.Base = filepath.Join(home, "dev")
-	}
 	if conf.Fleet.Concurrent <= 0 {
 		conf.Fleet.Concurrent = 5
 	}
