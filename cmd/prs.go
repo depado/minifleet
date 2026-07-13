@@ -41,7 +41,10 @@ func newPRsCmd() *cobra.Command {
 			}
 
 			owner := args[0]
-			prov := github.New(conf.GitHub.Token, conf.GitHub.Host)
+			prov, err := github.New(conf.GitHub.Token, conf.GitHub.Host)
+		if err != nil {
+			return err
+		}
 
 			target, _ := resolveFleet(conf, prov.Host(), owner)
 			tasks, err := manifestToTasks(target, filters)
@@ -72,7 +75,10 @@ func prsAll(ctx context.Context, conf *Conf, f Filters, state, author string, no
 		return nil
 	}
 
-	prov := github.New(conf.GitHub.Token, conf.GitHub.Host)
+	prov, err := github.New(conf.GitHub.Token, conf.GitHub.Host)
+	if err != nil {
+		return err
+	}
 	for _, t := range targets {
 		tasks, err := manifestToTasks(t, f)
 		if err != nil {

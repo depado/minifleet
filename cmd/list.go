@@ -41,7 +41,10 @@ func newListCmd() *cobra.Command {
 			}
 
 			owner := args[0]
-			prov := github.New(conf.GitHub.Token, conf.GitHub.Host)
+			prov, err := github.New(conf.GitHub.Token, conf.GitHub.Host)
+		if err != nil {
+			return err
+		}
 			target, _ := resolveFleet(conf, prov.Host(), owner)
 			tasks, err := manifestToTasks(target, filters)
 			if err != nil {
@@ -84,7 +87,10 @@ func listAll(ctx context.Context, conf *Conf, f Filters, format string) error {
 }
 
 func listFromAPI(ctx context.Context, conf *Conf, owner string, f Filters, format string, limit int) error {
-	prov := github.New(conf.GitHub.Token, conf.GitHub.Host)
+	prov, err := github.New(conf.GitHub.Token, conf.GitHub.Host)
+	if err != nil {
+		return err
+	}
 
 	isOrg, err := prov.DetectOwner(ctx, owner)
 	if err != nil {

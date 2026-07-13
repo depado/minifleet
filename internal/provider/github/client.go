@@ -3,7 +3,6 @@ package github
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/depado/minifleet/internal/provider"
 	gogithub "github.com/google/go-github/v89/github"
@@ -17,7 +16,7 @@ type Client struct {
 // New builds a GitHub provider. host defaults to "github.com" when empty.
 // A non-default host is treated as GitHub Enterprise: the REST base URL is
 // set to https://<host>/api/v3/ and clone URLs use <host> directly.
-func New(token, host string) provider.Provider {
+func New(token, host string) (provider.Provider, error) {
 	if host == "" {
 		host = "github.com"
 	}
@@ -34,10 +33,9 @@ func New(token, host string) provider.Provider {
 
 	c, err := gogithub.NewClient(opts...)
 	if err != nil {
-		slog.Error("unable to create GitHub client", "error", err, "host", host)
-		return nil
+		return nil, fmt.Errorf("create github client: %w", err)
 	}
-	return &Client{client: c, host: host}
+	return &Client{client: c, host: host}, nil
 }
 
 // Host returns the clone/API host for this provider.

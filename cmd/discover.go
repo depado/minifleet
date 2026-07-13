@@ -29,7 +29,10 @@ func newDiscoverCmd() *cobra.Command {
 
 			owner := args[0]
 			ctx := cmd.Context()
-			prov := github.New(conf.GitHub.Token, conf.GitHub.Host)
+			prov, err := github.New(conf.GitHub.Token, conf.GitHub.Host)
+		if err != nil {
+			return err
+		}
 
 			return discoverOne(ctx, conf, prov, owner, filters)
 		},
