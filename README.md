@@ -46,7 +46,7 @@
 - **Remote discovery** — `list` shows repos from the API with filters for archived, forks, topics, visibility, language, labels, and groups. Output as table, JSON, or YAML manifest.
 - **Local status dashboard** — See the state of all cloned repos: current branch, commits ahead/behind remote, uncommitted changes, stashed changes.
 - **Cross-repo PR dashboard** — List open pull requests across all repos with CI status (success/pending/failure) and review status (approved/changes/pending) in a single table.
-- **Unified filters** — Every command accepts the same filter flags: `--target`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, `--language`, `--label`, `--group`.
+- **Unified filters** — Every command accepts the same filter flags: `--include-regex`, `--exclude-regex`, `--include`, `--exclude`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, `--language`, `--label`, `--group`.
 - **Per-directory fleets** — A `fleet.yml` lives alongside the repos it describes; `config.yml` tracks known fleet directories in `known_fleets`. No path bookkeeping per repo.
 - **One-shot mode** — `--fleet.path <dir>` bypasses discovery for ad-hoc operations in any directory.
 - **GitHub Enterprise** — `--github.host <host>` retargets the API and clone URLs at a GHE instance.
@@ -157,7 +157,10 @@ After a successful sync, `known_fleets[owner]` is updated in `config.yml` so the
 
 ```
 Flags:
-  --target, -t string        regex to match repo names
+  --include-regex string     regex to match repo names
+  --exclude-regex string     regex to exclude repo names
+  --include stringArray      include repo by exact name (repeatable)
+  --exclude stringArray      exclude repo by exact name (repeatable)
   --topic stringArray        filter by topic (repeatable)
   --include-archived         include archived repos
   --include-forks            include forked repos
@@ -196,7 +199,10 @@ List repositories from the GitHub API. Auto-detects org vs. user. Output as `tab
 
 ```
 Flags:
-  --target, -t string        regex to match repo names
+  --include-regex string     regex to match repo names
+  --exclude-regex string     regex to exclude repo names
+  --include stringArray      include repo by exact name (repeatable)
+  --exclude stringArray      exclude repo by exact name (repeatable)
   --topic stringArray        filter by topic
   --include-archived         include archived repos
   --include-forks            include forked repos
@@ -224,7 +230,10 @@ Walk the local fleet directory for git repos and show their status in a single t
 
 ```
 Flags:
-  --target, -t string        regex to match repo names
+  --include-regex string     regex to match repo names
+  --exclude-regex string     regex to exclude repo names
+  --include stringArray      include repo by exact name (repeatable)
+  --exclude stringArray      exclude repo by exact name (repeatable)
   --topic stringArray        filter by topic (via manifest)
   --include-archived         include repos flagged as archived in manifest
   --include-forks            include repos flagged as fork in manifest
@@ -248,7 +257,10 @@ Flags:
   --state string             open, closed, all (default: open)
   --author, -a string        filter by PR author
   --no-draft                 exclude draft PRs
-  --target, -t string        regex to match repo names
+  --include-regex string     regex to match repo names
+  --exclude-regex string     regex to exclude repo names
+  --include stringArray      include repo by exact name (repeatable)
+  --exclude stringArray      exclude repo by exact name (repeatable)
   --topic stringArray        filter by topic
   --include-archived         include archived repos
   --include-forks            include forked repos
@@ -269,7 +281,10 @@ Run a shell command in every local repository directory (or a filtered subset). 
 
 ```
 Flags:
-  --target, -t string        regex to match repo names
+  --include-regex string     regex to match repo names
+  --exclude-regex string     regex to exclude repo names
+  --include stringArray      include repo by exact name (repeatable)
+  --exclude stringArray      exclude repo by exact name (repeatable)
   --topic stringArray        filter by topic (via manifest)
   --include-archived         include archived repos
   --include-forks            include forked repos
@@ -301,7 +316,7 @@ minifleet run --summary=false --language go -- "make build"
 minifleet run -- "grep -r 'TODO' ."
 
 # Dry-run a destructive bulk change
-minifleet run --dry-run --target "^old-" -- "rm -f .env.local"
+minifleet run --dry-run --include-regex "^old-" -- "rm -f .env.local"
 ```
 
 **Summary mode** (default): one line per repo (`✓`/`✗ exit N` + duration); failed repos also print their captured stderr and stdout.
@@ -371,7 +386,10 @@ Every command accepts the same filter flags so users get a consistent vocabulary
 
 | Flag                 | Type        | Behavior                                                                             |
 | -------------------- | ----------- | ------------------------------------------------------------------------------------ |
-| `--target` / `-t`    | regex       | Match on repo name (or local directory name for `status`)                            |
+| `--include-regex`    | regex       | Match on repo name (or local directory name for `status`)                            |
+| `--exclude-regex`    | regex       | Exclude repos whose name matches (wins over includes)                                |
+| `--include`          | stringArray | Include repo by exact name (repeatable)                                              |
+| `--exclude`          | stringArray | Exclude repo by exact name (repeatable, wins over includes)                          |
 | `--topic`            | stringArray | Match if repo has any of the given topics (OR)                                       |
 | `--include-archived` | bool        | Include archived repos (excluded by default)                                         |
 | `--include-forks`    | bool        | Include forked repos (excluded by default)                                           |
@@ -387,7 +405,7 @@ Filters compose freely:
 minifleet status --language go --label tier=1 --group backend
 ```
 
-`--label` and `--group` consult the manifest; `--target`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, and `--language` work from the API response or local scan alone.
+`--label` and `--group` consult the manifest; `--include-regex`, `--exclude-regex`, `--include`, `--exclude`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, and `--language` work from the API response or local scan alone.
 
 ## One-shot mode
 

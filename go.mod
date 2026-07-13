@@ -3,7 +3,7 @@ module github.com/depado/minifleet
 go 1.26.1
 
 require (
-	github.com/depado/gorich v1.0.8
+	github.com/depado/gorich v1.0.9
 	github.com/google/go-github/v89 v89.0.0
 	github.com/lmittmann/tint v1.2.0
 	github.com/mattn/go-isatty v0.0.22
@@ -29,5 +29,5 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
-	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )

@@ -75,7 +75,7 @@ func newStatusCmd() *cobra.Command {
 func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters, format string) ([]statusRow, error) {
 	mf := loadFleetManifest(t)
 
-	tasks, err := fleet.Scan(t.Dir, f.Target, mf)
+	tasks, err := fleet.Scan(t.Dir, f.IncludeRegex, mf)
 	if err != nil {
 		return nil, fmt.Errorf("scan %s: %w", t.Dir, err)
 	}

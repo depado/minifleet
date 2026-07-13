@@ -14,7 +14,10 @@ import (
 // repositories. Flags are bound by addFilterFlags; Apply runs them against a
 // list of repos, optionally consulting the manifest for label/group filtering.
 type Filters struct {
-	Target          string
+	IncludeRegex    string
+	ExcludeRegex    string
+	Include         []string
+	Exclude         []string
 	Topics          []string
 	IncludeArchived bool
 	IncludeForks    bool
@@ -27,7 +30,10 @@ type Filters struct {
 // addFilterFlags binds the full filter flag set on a command. All commands that
 // operate on repos use the same flags so users get a consistent vocabulary.
 func addFilterFlags(c *cobra.Command, f *Filters) {
-	c.Flags().StringVarP(&f.Target, "target", "t", "", "regex to match repo names")
+	c.Flags().StringVar(&f.IncludeRegex, "include-regex", "", "regex to match repo names")
+	c.Flags().StringVar(&f.ExcludeRegex, "exclude-regex", "", "regex to exclude repo names")
+	c.Flags().StringArrayVar(&f.Include, "include", nil, "include repo by exact name (repeatable)")
+	c.Flags().StringArrayVar(&f.Exclude, "exclude", nil, "exclude repo by exact name (repeatable)")
 	c.Flags().StringArrayVar(&f.Topics, "topic", nil, "filter by topic (repeatable)")
 	c.Flags().BoolVar(&f.IncludeArchived, "include-archived", false, "include archived repos")
 	c.Flags().BoolVar(&f.IncludeForks, "include-forks", false, "include forked repos")
@@ -38,15 +44,11 @@ func addFilterFlags(c *cobra.Command, f *Filters) {
 }
 
 // Apply filters a slice of repos. mf may be nil; manifest-based filters are
-// skipped when it is. A target regex compile error is returned as-is.
+// skipped when it is. A name-filter regex compile error is returned as-is.
 func (f Filters) Apply(repos []*provider.Repo, mf *manifest.FleetManifest) ([]*provider.Repo, error) {
-	var targetPat *regexp.Regexp
-	if f.Target != "" {
-		p, err := regexp.Compile(f.Target)
-		if err != nil {
-			return nil, fmt.Errorf("target regex: %w", err)
-		}
-		targetPat = p
+	nm, err := f.nameMatcher()
+	if err != nil {
+		return nil, err
 	}
 
 	labelFilters := parseLabels(f.Labels)
@@ -91,7 +93,7 @@ func (f Filters) Apply(repos []*provider.Repo, mf *manifest.FleetManifest) ([]*p
 		if f.Language != "" && !strings.EqualFold(r.Language, f.Language) {
 			continue
 		}
-		if targetPat != nil && !targetPat.MatchString(r.Name) {
+		if !nm.match(r.Name) {
 			continue
 		}
 		if len(labelFilters) > 0 {
@@ -111,16 +113,12 @@ func (f Filters) Apply(repos []*provider.Repo, mf *manifest.FleetManifest) ([]*p
 }
 
 // ApplyTasks filters fleet.RepoTask-style entries (from the local scanner).
-// Only target and manifest-based filters apply since task entries may not
+// Only name and manifest-based filters apply since task entries may not
 // carry API metadata.
 func (f Filters) ApplyTasks(tasks []taskWithName, mf *manifest.FleetManifest) ([]taskWithName, error) {
-	var targetPat *regexp.Regexp
-	if f.Target != "" {
-		p, err := regexp.Compile(f.Target)
-		if err != nil {
-			return nil, fmt.Errorf("target regex: %w", err)
-		}
-		targetPat = p
+	nm, err := f.nameMatcher()
+	if err != nil {
+		return nil, err
 	}
 
 	labelFilters := parseLabels(f.Labels)
@@ -166,7 +164,7 @@ func (f Filters) ApplyTasks(tasks []taskWithName, mf *manifest.FleetManifest) ([
 				}
 			}
 		}
-		if targetPat != nil && !targetPat.MatchString(t.RepoName) {
+		if !nm.match(t.RepoName) {
 			continue
 		}
 		out = append(out, t)
@@ -230,4 +228,62 @@ func matchAnyTopic(repoTopics, filterTopics []string) bool {
 // single-owner manifest. Returns nil if the group does not exist.
 func groupRepos(mf *manifest.FleetManifest, group string) map[string]struct{} {
 	return mf.GroupRepos(group)
+}
+
+// nameMatcher decides whether a repo name passes the include/exclude filters.
+// Exclude wins over include. Include (regex or exact list) is allow-list: when
+// either is set, a name must match to pass.
+type nameMatcher struct {
+	includeRe *regexp.Regexp
+	excludeRe *regexp.Regexp
+	include   map[string]struct{}
+	exclude   map[string]struct{}
+}
+
+func (f Filters) nameMatcher() (nameMatcher, error) {
+	var nm nameMatcher
+	if f.IncludeRegex != "" {
+		p, err := regexp.Compile(f.IncludeRegex)
+		if err != nil {
+			return nm, fmt.Errorf("include-regex: %w", err)
+		}
+		nm.includeRe = p
+	}
+	if f.ExcludeRegex != "" {
+		p, err := regexp.Compile(f.ExcludeRegex)
+		if err != nil {
+			return nm, fmt.Errorf("exclude-regex: %w", err)
+		}
+		nm.excludeRe = p
+	}
+	nm.include = toSet(f.Include)
+	nm.exclude = toSet(f.Exclude)
+	return nm, nil
+}
+
+func (nm nameMatcher) match(name string) bool {
+	if _, ok := nm.exclude[name]; ok {
+		return false
+	}
+	if nm.excludeRe != nil && nm.excludeRe.MatchString(name) {
+		return false
+	}
+	if nm.include == nil && nm.includeRe == nil {
+		return true
+	}
+	if _, ok := nm.include[name]; ok {
+		return true
+	}
+	return nm.includeRe != nil && nm.includeRe.MatchString(name)
+}
+
+func toSet(vals []string) map[string]struct{} {
+	if len(vals) == 0 {
+		return nil
+	}
+	s := make(map[string]struct{}, len(vals))
+	for _, v := range vals {
+		s[v] = struct{}{}
+	}
+	return s
 }

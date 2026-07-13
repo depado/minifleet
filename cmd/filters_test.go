@@ -40,7 +40,11 @@ func TestFiltersApply(t *testing.T) {
 		{"label tier (any)", Filters{Labels: []string{"tier"}, IncludeArchived: true}, []string{"svc-api", "old-thing"}},
 		{"group backend", Filters{Group: "backend"}, []string{"svc-api"}},
 		{"group missing errors", Filters{Group: "nope"}, nil},
-		{"target regex", Filters{Target: "^svc", IncludeArchived: true, IncludeForks: true}, []string{"svc-api"}},
+		{"target regex", Filters{IncludeRegex: "^svc", IncludeArchived: true, IncludeForks: true}, []string{"svc-api"}},
+		{"exclude regex", Filters{ExcludeRegex: "^svc", IncludeArchived: true, IncludeForks: true}, []string{"old-thing", "forked-lib"}},
+		{"include exact", Filters{Include: []string{"svc-api", "old-thing"}, IncludeArchived: true, IncludeForks: true}, []string{"svc-api", "old-thing"}},
+		{"exclude exact", Filters{Exclude: []string{"svc-api"}, IncludeArchived: true, IncludeForks: true}, []string{"old-thing", "forked-lib"}},
+		{"exclude wins over include", Filters{Include: []string{"svc-api"}, Exclude: []string{"svc-api"}, IncludeArchived: true, IncludeForks: true}, nil},
 		{"visibility private", Filters{Visibility: "private", IncludeArchived: true, IncludeForks: true}, []string{"svc-api"}},
 	}
 

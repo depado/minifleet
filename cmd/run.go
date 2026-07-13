@@ -94,7 +94,7 @@ Examples:
 			totalCount := 0
 			for _, t := range targets {
 				mf := loadFleetManifest(t)
-				tasks, err := fleet.Scan(t.Dir, filters.Target, mf)
+				tasks, err := fleet.Scan(t.Dir, filters.IncludeRegex, mf)
 				if err != nil {
 					return fmt.Errorf("scan %s: %w", t.Dir, err)
 				}
