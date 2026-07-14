@@ -65,10 +65,8 @@ source:
 checksum:
   name_template: 'checksums.txt'
 
-
 sboms:
   - artifacts: source
-
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
@@ -110,6 +108,25 @@ release:
   prerelease: auto
   mode: replace
   name_template: "v{{ .Version }}"
+  header: |
+    ## minifleet {{ .Version }}
+
+    Minimal fleet management for your GitHub repositories.
+
+    ### Quick Install
+
+    ```bash
+    curl -sSL "https://github.com/depado/minifleet/releases/download/v{{ .Version }}/minifleet_$(go env GOOS)_x86_64.tar.gz" | tar xz
+
+    # Or via Go
+    go install github.com/depado/minifleet@v{{ .Version }}
+    ```
+
+    ### Docker
+
+    ```bash
+    docker pull ghcr.io/depado/minifleet:{{ .Version }}
+    ```
 
 git:
   ignore_tags:
