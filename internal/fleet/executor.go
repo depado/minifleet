@@ -135,9 +135,7 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 	)
 
 	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			var slotID progress.TaskID
 			hasSlot := false
 			for {
@@ -215,7 +213,7 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 					mu.Unlock()
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
