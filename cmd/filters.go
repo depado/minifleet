@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/depado/minifleet/internal/git"
 	"github.com/depado/minifleet/internal/manifest"
 	"github.com/depado/minifleet/internal/provider"
 	"github.com/spf13/cobra"
@@ -34,6 +35,7 @@ type Filters struct {
 	Group           string
 	HasFiles        []string
 	IfCmd           string
+	Dirty           bool
 }
 
 // addFilterFlags binds the metadata filter flag set on a command. All commands
@@ -60,6 +62,7 @@ func addLocalFilterFlags(c *cobra.Command, f *Filters) {
 	flags := c.Flags()
 	flags.StringArrayVarP(&f.HasFiles, "has-file", "H", nil, "require file to exist in repo dir (repeatable, AND logic)")
 	flags.StringVar(&f.IfCmd, "if", "", "shell command; exit 0 = include repo")
+	flags.BoolVar(&f.Dirty, "dirty", false, "only repos with uncommitted changes to tracked files")
 }
 
 // Apply filters a slice of repos. mf may be nil; manifest-based filters are
@@ -192,7 +195,14 @@ func (f Filters) ApplyTasks(tasks []taskWithName, mf *manifest.FleetManifest) ([
 		out = append(out, t)
 	}
 	if f.IfCmd != "" {
-		out = f.parallelRunIf(out)
+		out = parallelFilter(out, f.runIf)
+	}
+	if f.Dirty {
+		out = parallelFilter(out, func(dir string) bool {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			return git.IsDirty(ctx, dir)
+		})
 	}
 	return out, nil
 }
@@ -336,7 +346,9 @@ func (f Filters) runIf(dir string) bool {
 	return cmd.Run() == nil
 }
 
-func (f Filters) parallelRunIf(tasks []taskWithName) []taskWithName {
+// parallelFilter keeps tasks whose directory passes the predicate, running
+// checks concurrently (bounded by NumCPU).
+func parallelFilter(tasks []taskWithName, keep func(dir string) bool) []taskWithName {
 	sem := make(chan struct{}, runtime.NumCPU())
 	var wg sync.WaitGroup
 	kept := make([]taskWithName, 0, len(tasks))
@@ -349,7 +361,7 @@ func (f Filters) parallelRunIf(tasks []taskWithName) []taskWithName {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			if f.runIf(t.Dir) {
+			if keep(t.Dir) {
 				mu.Lock()
 				kept = append(kept, t)
 				mu.Unlock()

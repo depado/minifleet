@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -240,6 +241,63 @@ func TestApplyTasksIfCmd(t *testing.T) {
 				t.Errorf("got %v, want %v", names, tt.want)
 			}
 		})
+	}
+}
+
+func TestApplyTasksDirty(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	dir := t.TempDir()
+	cleanDir := filepath.Join(dir, "clean")
+	dirtyDir := filepath.Join(dir, "dirty")
+	plainDir := filepath.Join(dir, "plain")
+
+	gitRun := func(d string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = d
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	for _, d := range []string{cleanDir, dirtyDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		gitRun(d, "init")
+		gitRun(d, "config", "user.email", "test@test.com")
+		gitRun(d, "config", "user.name", "test")
+		if err := os.WriteFile(filepath.Join(d, "f.txt"), []byte("a"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gitRun(d, "add", ".")
+		gitRun(d, "commit", "-m", "init")
+	}
+	if err := os.MkdirAll(plainDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dirtyDir, "f.txt"), []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks := []taskWithName{
+		{RepoName: "clean", FullName: "o/clean", ID: "o/clean", Dir: cleanDir},
+		{RepoName: "dirty", FullName: "o/dirty", ID: "o/dirty", Dir: dirtyDir},
+		{RepoName: "plain", FullName: "o/plain", ID: "o/plain", Dir: plainDir},
+	}
+
+	got, err := Filters{Dirty: true}.ApplyTasks(tasks, nil)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	names := make([]string, 0, len(got))
+	for _, g := range got {
+		names = append(names, g.RepoName)
+	}
+	if !equalSets(names, []string{"dirty"}) {
+		t.Errorf("got %v, want [dirty]", names)
 	}
 }
 

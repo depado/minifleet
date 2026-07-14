@@ -44,6 +44,13 @@ func Status(ctx context.Context, dir string) (*RepoStatus, error) {
 	}, nil
 }
 
+// IsDirty reports whether the repo has uncommitted changes to tracked files.
+// Untracked files do not count. Returns false when dir is not a git repo.
+func IsDirty(ctx context.Context, dir string) bool {
+	dirty, _ := checkDirty(ctx, dir)
+	return dirty
+}
+
 func checkDirty(ctx context.Context, dir string) (dirty bool, untracked int) {
 	out, err := run(ctx, dir, "status", "--porcelain")
 	if err != nil || out == "" {
