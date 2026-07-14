@@ -22,8 +22,9 @@ type fleetTarget struct {
 // resolveFleet returns the directory to operate on for a command with an owner.
 // Resolution order:
 //  1. --fleet.path (explicit one-shot override)
-//  2. CWD (whether or not fleet.yml exists)
+//  2. CWD if its fleet.yml matches the owner
 //  3. known_fleets[owner]
+//  4. CWD without fleet.yml (e.g. discover into a fresh directory)
 //
 // Returns an empty target when no directory can be resolved.
 func resolveFleet(conf *Conf, host, owner string) (fleetTarget, bool) {
@@ -39,16 +40,20 @@ func resolveFleet(conf *Conf, host, owner string) (fleetTarget, bool) {
 		return fleetTarget{Owner: resolvedOwner, Dir: dir}, mf != nil
 	}
 
-	// 2. CWD
+	// 2. CWD with a matching fleet.yml
+	var cwdFallback fleetTarget
 	if cwd, err := os.Getwd(); err == nil {
 		mf, _ := manifest.Load(manifest.Path(cwd))
-		if mf == nil || owner == "" || mf.Owner == owner {
+		if mf != nil && (owner == "" || mf.Owner == owner) {
 			resolvedOwner := owner
-			if mf != nil && mf.Owner != "" {
+			if mf.Owner != "" {
 				resolvedOwner = mf.Owner
 			}
 			slog.Debug("resolving fleet from current directory", "dir", cwd, "owner", resolvedOwner)
-			return fleetTarget{Owner: resolvedOwner, Dir: cwd}, mf != nil
+			return fleetTarget{Owner: resolvedOwner, Dir: cwd}, true
+		}
+		if mf == nil {
+			cwdFallback = fleetTarget{Owner: owner, Dir: cwd}
 		}
 	}
 
@@ -58,6 +63,12 @@ func resolveFleet(conf *Conf, host, owner string) (fleetTarget, bool) {
 			slog.Debug("resolving fleet from known_fleets", "owner", owner, "dir", dir)
 			return fleetTarget{Owner: owner, Dir: dir}, fileExists(manifest.Path(dir))
 		}
+	}
+
+	// 4. CWD without a manifest
+	if cwdFallback.Dir != "" {
+		slog.Debug("resolving fleet from current directory (no manifest)", "dir", cwdFallback.Dir, "owner", owner)
+		return cwdFallback, false
 	}
 
 	return fleetTarget{}, false

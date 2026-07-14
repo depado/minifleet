@@ -77,7 +77,7 @@ func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, format str
 	}
 
 	for _, t := range targets {
-		if err := syncOne(ctx, conf, prov, t.Owner, format, collect); err != nil {
+		if err := syncTarget(ctx, conf, prov, t, format, collect); err != nil {
 			return err
 		}
 	}
@@ -85,17 +85,20 @@ func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, format str
 }
 
 func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner string, format string, collect func(*fleet.BulkResult)) error {
-	host := prov.Host()
-	target, _ := resolveFleet(conf, host, owner)
+	target, _ := resolveFleet(conf, prov.Host(), owner)
 
 	if target.Dir == "" {
 		return fmt.Errorf("could not resolve fleet directory for %s (no --fleet.path, CWD, or known_fleets entry)", owner)
 	}
 
+	return syncTarget(ctx, conf, prov, target, format, collect)
+}
+
+func syncTarget(ctx context.Context, conf *Conf, prov provider.Provider, target fleetTarget, format string, collect func(*fleet.BulkResult)) error {
 	mf := loadFleetManifest(target)
 
 	if mf == nil {
-		return fmt.Errorf("no fleet.yml found for %s — run 'minifleet discover %s' first", owner, owner)
+		return fmt.Errorf("no fleet.yml in %s — run 'minifleet discover %s' first", target.Dir, target.Owner)
 	}
 
 	return syncFromManifest(ctx, conf, prov, target, mf, format, collect)
