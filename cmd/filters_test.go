@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/depado/minifleet/internal/manifest"
@@ -96,6 +98,115 @@ func TestApplyTasks(t *testing.T) {
 		{"archived excluded by default", Filters{}, []string{"svc-api", "loose"}},
 		{"include-archived includes manifest archived", Filters{IncludeArchived: true}, []string{"svc-api", "loose", "old-thing"}},
 		{"label tier=3 on archived needs include-archived", Filters{Labels: []string{"tier=3"}, IncludeArchived: true}, []string{"old-thing"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.f.ApplyTasks(tasks, mf)
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			names := make([]string, 0, len(got))
+			for _, g := range got {
+				names = append(names, g.RepoName)
+			}
+			if !equalSets(names, tt.want) {
+				t.Errorf("got %v, want %v", names, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplyTasksHasFiles(t *testing.T) {
+	dir := t.TempDir()
+	apiDir := filepath.Join(dir, "svc-api")
+	looseDir := filepath.Join(dir, "loose")
+	oldDir := filepath.Join(dir, "old-thing")
+	for _, d := range []string{apiDir, looseDir, oldDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.WriteFile(filepath.Join(apiDir, "go.mod"), []byte("module o/svc-api\n"), 0o644)
+	os.WriteFile(filepath.Join(apiDir, "main.go"), []byte("package main\n"), 0o644)
+	os.WriteFile(filepath.Join(looseDir, "Makefile"), []byte("all:\n"), 0o644)
+
+	tasks := []taskWithName{
+		{RepoName: "svc-api", FullName: "o/svc-api", ID: "/x/svc-api", Dir: apiDir},
+		{RepoName: "loose", FullName: "", ID: "/x/loose", Dir: looseDir},
+		{RepoName: "old-thing", FullName: "o/old-thing", ID: "/x/old-thing", Dir: oldDir},
+	}
+	mf := &manifest.FleetManifest{
+		Version: "1",
+		Owner:   "o",
+		Repos: []manifest.ManifestRepo{
+			{FullName: "o/svc-api", Language: "Go", Archived: false},
+			{FullName: "o/old-thing", Language: "Python", Archived: true},
+		},
+	}
+	tests := []struct {
+		name string
+		f    Filters
+		want []string
+	}{
+		{"has-file go.mod matches svc-api only", Filters{HasFiles: []string{"go.mod"}, IncludeArchived: true}, []string{"svc-api"}},
+		{"has-file main.go matches svc-api only", Filters{HasFiles: []string{"main.go"}, IncludeArchived: true}, []string{"svc-api"}},
+		{"has-file Makefile matches loose only", Filters{HasFiles: []string{"Makefile"}}, []string{"loose"}},
+		{"has-file go.mod AND main.go matches svc-api", Filters{HasFiles: []string{"go.mod", "main.go"}, IncludeArchived: true}, []string{"svc-api"}},
+		{"has-file go.mod AND Makefile matches none", Filters{HasFiles: []string{"go.mod", "Makefile"}, IncludeArchived: true}, nil},
+		{"has-file missing file matches none", Filters{HasFiles: []string{"package.json"}, IncludeArchived: true}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.f.ApplyTasks(tasks, mf)
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			names := make([]string, 0, len(got))
+			for _, g := range got {
+				names = append(names, g.RepoName)
+			}
+			if !equalSets(names, tt.want) {
+				t.Errorf("got %v, want %v", names, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplyTasksIfCmd(t *testing.T) {
+	dir := t.TempDir()
+	apiDir := filepath.Join(dir, "svc-api")
+	looseDir := filepath.Join(dir, "loose")
+	oldDir := filepath.Join(dir, "old-thing")
+	for _, d := range []string{apiDir, looseDir, oldDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.WriteFile(filepath.Join(apiDir, "go.mod"), []byte("module o/svc-api\n\ngo 1.21\nrequire (\n\tgithub.com/foo/bar v2.3.0\n)\n"), 0o644)
+	os.WriteFile(filepath.Join(looseDir, "Makefile"), []byte("all:\n"), 0o644)
+
+	tasks := []taskWithName{
+		{RepoName: "svc-api", FullName: "o/svc-api", ID: "/x/svc-api", Dir: apiDir},
+		{RepoName: "loose", FullName: "", ID: "/x/loose", Dir: looseDir},
+		{RepoName: "old-thing", FullName: "o/old-thing", ID: "/x/old-thing", Dir: oldDir},
+	}
+	mf := &manifest.FleetManifest{
+		Version: "1",
+		Owner:   "o",
+		Repos: []manifest.ManifestRepo{
+			{FullName: "o/svc-api", Language: "Go", Archived: false},
+			{FullName: "o/old-thing", Language: "Python", Archived: true},
+		},
+	}
+	tests := []struct {
+		name string
+		f    Filters
+		want []string
+	}{
+		{"if grep matches svc-api", Filters{IfCmd: "grep -q foo/bar go.mod", IncludeArchived: true}, []string{"svc-api"}},
+		{"if grep no match filters all", Filters{IfCmd: "grep -q nonexistent go.mod", IncludeArchived: true}, nil},
+		{"if true passes all", Filters{IfCmd: "true", IncludeArchived: true}, []string{"svc-api", "loose", "old-thing"}},
+		{"if false filters all", Filters{IfCmd: "false", IncludeArchived: true}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

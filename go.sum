@@ -3,8 +3,6 @@ github.com/clipperhouse/uax29/v2 v2.7.0/go.mod h1:EFJ2TJMRUaplDxHKj1qAEhCtQPW2tJ
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/depado/gorich v1.0.9 h1:gliaaAXjQpWNONf5JASLOfVFAZAJEXy3CF00GPNbckU=
-github.com/depado/gorich v1.0.9/go.mod h1:WQYeGwPR9rKLKRfXV42dpIurDadSz3erc8NqXunU9eI=
 github.com/depado/gorich v1.1.0 h1:0u180PyDqIkq3Pse4YpBO+uTnVt/9QOT8Y88kurkpqY=
 github.com/depado/gorich v1.1.0/go.mod h1:WQYeGwPR9rKLKRfXV42dpIurDadSz3erc8NqXunU9eI=
 github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHkI4W8=

@@ -52,7 +52,7 @@
 - **Local-first listing** — `list` shows repos from the manifest when available, with an API fallback when no manifest exists. Output as table, JSON, or YAML.
 - **Local status dashboard** — See the state of all cloned repos: current branch, commits ahead/behind remote, uncommitted changes, stashed changes.
 - **Cross-repo PR dashboard** — List open pull requests across all repos with CI status (success/pending/failure) and review status (approved/changes/pending). Repo list comes from the manifest; PR data from the API.
-- **Unified filters** — Every command that queries the API or filters repos accepts the same filter flags: `--include-regex`, `--exclude-regex`, `--include`, `--exclude`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, `--language`, `--label`, `--group`.
+- **Unified filters** — Every command that queries the API or filters repos accepts the same filter flags: `--include-regex`, `--exclude-regex`, `--include`, `--exclude`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, `--language`, `--label`, `--group`, `--has-file`, `--if`.
 - **Per-directory fleets** — A `fleet.yml` lives alongside the repos it describes; `config.yml` tracks known fleet directories in `known_fleets`. No path bookkeeping per repo.
 - **One-shot mode** — `--fleet.path <dir>` bypasses discovery for ad-hoc operations in any directory.
 - **GitHub Enterprise** — `--github.host <host>` retargets the API and clone URLs at a GHE instance.
@@ -287,6 +287,8 @@ Flags:
   --language string          filter by language (via manifest)
   --label stringArray        filter by manifest label
   --group string             filter by manifest group
+  --has-file stringArray     require file to exist in repo dir (repeatable, AND)
+  --if string                shell command; exit 0 = include repo
   --format, -f string        table, json (default: table)
 ```
 
@@ -337,6 +339,8 @@ Flags:
   --language string          filter by primary language (via manifest)
   --label stringArray        filter by manifest label
   --group string             filter by manifest group
+  --has-file stringArray     require file to exist in repo dir (repeatable, AND)
+  --if string                shell command; exit 0 = include repo
   --summary                  force summary mode (one line per repo after completion)
   --progress                 force live block mode (animated spinners + streaming output)
   --block-lines int          output lines per repo block in live mode (default: 3)
@@ -361,6 +365,12 @@ minifleet run --progress --language go -- "make build"
 
 # Cross-repo code search
 minifleet run -- "grep -r 'TODO' ."
+
+# Only repos with specific files
+minifleet run -H go.mod -H Dockerfile -- "make build"
+
+# Only repos where a dependency check passes
+minifleet run --if 'grep -q "go 1.22" go.mod' -- "go vet ./..."
 
 # Dry-run a destructive bulk change
 minifleet run --dry-run --include-regex "^old-" -- "rm -f .env.local"
@@ -442,8 +452,10 @@ Every command that queries the API or filters repos accepts the same flags:
 | `--language`         | string      | Match on repo primary language (e.g. `go`, `python`)                                 |
 | `--label`            | stringArray | Match on manifest labels: `tier=1` (exact) or `tier` (any value). AND across labels. |
 | `--group`            | string      | Limit to repos in a manifest group                                                   |
+| `--has-file`         | stringArray | Include only repos with given file (e.g. `go.mod`, `Makefile`). AND logic, local-only. |
+| `--if`               | string      | Shell command; exit 0 = include, non-zero = exclude. Runs in parallel, local-only.   |
 
-Filters are available on `discover`, `list`, `prs`, `status`, and `run`. `sync` does not accept filters — it operates on all repos in the manifest.
+Filters are available on `discover`, `list`, `prs`, `status`, and `run`. `sync` does not accept filters — it operates on all repos in the manifest. `--has-file` and `--if` only apply when repos are cloned locally (`run`, `status`, manifest-backed `list`/`prs`).
 
 Filters compose freely:
 
@@ -453,6 +465,15 @@ minifleet discover depado --language go --label tier=1 --group backend
 
 # Status of those repos
 minifleet status --group backend --label tier=1
+
+# Only repos with a go.mod and main.go
+minifleet run -H go.mod -H main.go -- "go test ./..."
+
+# Only repos where go.mod pins a specific dependency
+minifleet run --if 'grep -q "github.com/foo/bar v2" go.mod' -- "make build"
+
+# Combine: Go repos with a Makefile, using a specific lib version
+minifleet run -H go.mod -H Makefile --if 'grep -q "github.com/foo/bar v2" go.mod' -- "make build"
 ```
 
 `--label` and `--group` consult the manifest; `--include-regex`, `--exclude-regex`, `--include`, `--exclude`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, and `--language` work from the manifest data or API response.

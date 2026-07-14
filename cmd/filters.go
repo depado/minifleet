@@ -1,9 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/depado/minifleet/internal/manifest"
 	"github.com/depado/minifleet/internal/provider"
@@ -25,6 +32,8 @@ type Filters struct {
 	Language        string
 	Labels          []string
 	Group           string
+	HasFiles        []string
+	IfCmd           string
 }
 
 // addFilterFlags binds the full filter flag set on a command. All commands that
@@ -42,6 +51,8 @@ func addFilterFlags(c *cobra.Command, f *Filters) {
 	flags.StringVarP(&f.Language, "language", "l", "", "filter by primary language")
 	flags.StringArrayVarP(&f.Labels, "label", "L", nil, "filter by manifest label (key=value or key, repeatable)")
 	flags.StringVarP(&f.Group, "group", "g", "", "filter by manifest group")
+	flags.StringArrayVarP(&f.HasFiles, "has-file", "H", nil, "require file to exist in repo dir (repeatable, AND logic)")
+	flags.StringVar(&f.IfCmd, "if", "", "shell command; exit 0 = include repo")
 }
 
 // Apply filters a slice of repos. mf may be nil; manifest-based filters are
@@ -168,7 +179,13 @@ func (f Filters) ApplyTasks(tasks []taskWithName, mf *manifest.FleetManifest) ([
 		if !nm.match(t.RepoName) {
 			continue
 		}
+		if !f.hasFiles(t.Dir) {
+			continue
+		}
 		out = append(out, t)
+	}
+	if f.IfCmd != "" {
+		out = f.parallelRunIf(out)
 	}
 	return out, nil
 }
@@ -287,4 +304,51 @@ func toSet(vals []string) map[string]struct{} {
 		s[v] = struct{}{}
 	}
 	return s
+}
+
+func (f Filters) hasFiles(dir string) bool {
+	if len(f.HasFiles) == 0 {
+		return true
+	}
+	for _, file := range f.HasFiles {
+		if _, err := os.Stat(filepath.Join(dir, file)); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func (f Filters) runIf(dir string) bool {
+	if f.IfCmd == "" {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", f.IfCmd)
+	cmd.Dir = dir
+	return cmd.Run() == nil
+}
+
+func (f Filters) parallelRunIf(tasks []taskWithName) []taskWithName {
+	sem := make(chan struct{}, runtime.NumCPU())
+	var wg sync.WaitGroup
+	kept := make([]taskWithName, 0, len(tasks))
+	var mu sync.Mutex
+
+	for _, t := range tasks {
+		wg.Add(1)
+		go func(t taskWithName) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			if f.runIf(t.Dir) {
+				mu.Lock()
+				kept = append(kept, t)
+				mu.Unlock()
+			}
+		}(t)
+	}
+	wg.Wait()
+	return kept
 }

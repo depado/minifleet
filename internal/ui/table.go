@@ -16,9 +16,9 @@ func NewTable(headers ...string) *table.Table {
 	)
 }
 
-func PrintError(msg string) { gorich.Print("[red]✗[/] " + msg) }
-func PrintInfo(msg string)  { gorich.Print("[cyan]→[/] " + msg) }
-func PrintDim(msg string)   { gorich.Print("[dim]" + msg + "[/]") }
+func PrintError(msg string) { gorich.Println("[red]✗[/] " + msg) }
+func PrintInfo(msg string)  { gorich.Println("[cyan]→[/] " + msg) }
+func PrintDim(msg string)   { gorich.Println("[dim]" + msg + "[/]") }
 
 // DefaultPrint renders a message with rich-text tag support, no prefix.
-func DefaultPrint(msg string) { gorich.Print(msg) }
+func DefaultPrint(msg string) { gorich.Println(msg) }

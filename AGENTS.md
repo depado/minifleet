@@ -50,8 +50,12 @@ minifleet/
 
 ## Tests
 
+- `make test` requires `CGO_ENABLED=1` (it sets it) because `-race` needs cgo;
+  running `go test -race ./...` directly with `CGO_ENABLED=0` fails.
 - Tests use standard `testing` package + table-driven style.
 - Filesystem tests use `t.TempDir()` + `t.Setenv("XDG_CONFIG_HOME", ...)`.
 - Git-dependent tests use `t.Skip` when git is absent.
+- Never hit the real GitHub API in tests: use
+  `internal/provider/testing.FakeProvider` (implements `provider.Provider`).
 - Pattern: `internal/fleet/scanner_test.go` (git init in temp dir) and
   `cmd/config_test.go` (temp config with XDG_CONFIG_HOME override).
