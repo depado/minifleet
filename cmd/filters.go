@@ -36,8 +36,8 @@ type Filters struct {
 	IfCmd           string
 }
 
-// addFilterFlags binds the full filter flag set on a command. All commands that
-// operate on repos use the same flags so users get a consistent vocabulary.
+// addFilterFlags binds the metadata filter flag set on a command. All commands
+// that operate on repos use the same flags so users get a consistent vocabulary.
 func addFilterFlags(c *cobra.Command, f *Filters) {
 	flags := c.Flags()
 	flags.StringVarP(&f.IncludeRegex, "include-regex", "r", "", "regex to match repo names")
@@ -51,6 +51,13 @@ func addFilterFlags(c *cobra.Command, f *Filters) {
 	flags.StringVarP(&f.Language, "language", "l", "", "filter by primary language")
 	flags.StringArrayVarP(&f.Labels, "label", "L", nil, "filter by manifest label (key=value or key, repeatable)")
 	flags.StringVarP(&f.Group, "group", "g", "", "filter by manifest group")
+}
+
+// addLocalFilterFlags adds filters that inspect the local checkout on top of
+// the metadata filters. Only commands operating on cloned repos should use it.
+func addLocalFilterFlags(c *cobra.Command, f *Filters) {
+	addFilterFlags(c, f)
+	flags := c.Flags()
 	flags.StringArrayVarP(&f.HasFiles, "has-file", "H", nil, "require file to exist in repo dir (repeatable, AND logic)")
 	flags.StringVar(&f.IfCmd, "if", "", "shell command; exit 0 = include repo")
 }

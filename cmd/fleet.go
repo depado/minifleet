@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -111,6 +112,14 @@ func discoverFleets(conf *Conf) []fleetTarget {
 	}
 	slog.Debug("discovered fleets", "count", len(out))
 	return out
+}
+
+// fleetTitle renders a human-readable table title for a fleet target.
+func fleetTitle(t fleetTarget) string {
+	if t.Owner != "" {
+		return fmt.Sprintf("[bold]%s[/] [dim]%s[/]", t.Owner, t.Dir)
+	}
+	return fmt.Sprintf("[dim]%s[/]", t.Dir)
 }
 
 func fileExists(path string) bool {

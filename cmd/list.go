@@ -55,7 +55,7 @@ func newListCmd() *cobra.Command {
 			}
 
 			mf := loadFleetManifest(target)
-			return outputManifestTable(tasks, mf, format)
+			return outputManifestTable(tasks, mf, format, fleetTitle(target))
 		},
 	}
 
@@ -79,7 +79,7 @@ func listAll(ctx context.Context, conf *Conf, f Filters, format string) error {
 			return err
 		}
 		mf := loadFleetManifest(t)
-		if err := outputManifestTable(tasks, mf, format); err != nil {
+		if err := outputManifestTable(tasks, mf, format, fleetTitle(t)); err != nil {
 			return err
 		}
 	}
@@ -132,7 +132,7 @@ func listFromAPI(ctx context.Context, conf *Conf, owner string, f Filters, forma
 	}
 }
 
-func outputManifestTable(tasks []fleet.RepoTask, mf *manifest.FleetManifest, format string) error {
+func outputManifestTable(tasks []fleet.RepoTask, mf *manifest.FleetManifest, format, title string) error {
 	idx := mf.Index()
 
 	if format == "json" {
@@ -201,7 +201,7 @@ func outputManifestTable(tasks []fleet.RepoTask, mf *manifest.FleetManifest, for
 		return nil
 	}
 
-	tbl := ui.NewTable("Name", "Language", "Updated", "Archived", "Fork", "Topics")
+	tbl := ui.NewTitledTable(title, "Name", "Language", "Updated", "Archived", "Fork", "Topics")
 	for _, t := range tasks {
 		mr := idx[t.FullName]
 		archived := "[dim]no[/]"

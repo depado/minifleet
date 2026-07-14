@@ -48,25 +48,27 @@ func newStatusCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				allRows = append(allRows, rows...)
+				if format == "json" {
+					allRows = append(allRows, rows...)
+					continue
+				}
+				if len(rows) > 0 {
+					renderStatusTable(fleetTitle(t), rows)
+				}
 			}
 
-			switch format {
-			case "json":
+			if format == "json" {
 				data, err := json.MarshalIndent(allRows, "", "  ")
 				if err != nil {
 					return err
 				}
 				fmt.Print(string(data))
-				return nil
-			default:
-				renderStatusTable(allRows)
-				return nil
 			}
+			return nil
 		},
 	}
 
-	addFilterFlags(cmd, &filters)
+	addLocalFilterFlags(cmd, &filters)
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json")
 
 	return cmd
@@ -108,20 +110,23 @@ func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters
 	return out, nil
 }
 
-func renderStatusTable(rows []statusRow) {
+func renderStatusTable(title string, rows []statusRow) {
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Repo < rows[j].Repo })
 
-	tbl := ui.NewTable("Repo", "Branch", "Behind", "Ahead", "Dirty", "Stash")
+	tbl := ui.NewTitledTable(title, "Repo", "Remote", "Branch", "Behind", "Ahead", "Dirty", "Untracked", "Stash")
 	for _, r := range rows {
+		remote := "?"
 		branch := "?"
 		behind := "?"
 		ahead := "?"
 		dirty := "?"
+		untracked := "?"
 		stash := "?"
 
 		if r.Error != "" {
 			dirty = "[red]error[/]"
 		} else if r.Status != nil {
+			remote = r.Status.Remote
 			branch = r.Status.Branch
 			behind = fmt.Sprintf("%d", r.Status.Behind)
 			ahead = fmt.Sprintf("%d", r.Status.Ahead)
@@ -130,15 +135,18 @@ func renderStatusTable(rows []statusRow) {
 			} else {
 				dirty = "[dim]no[/]"
 			}
+			untracked = fmt.Sprintf("%d", r.Status.Untracked)
 			stash = fmt.Sprintf("%d", r.Status.StashCount)
 		}
 
 		tbl.AddRow(
 			fmt.Sprintf("[bold]%s[/]", r.Repo),
+			remote,
 			branch,
 			behind,
 			ahead,
 			dirty,
+			untracked,
 			stash,
 		)
 	}

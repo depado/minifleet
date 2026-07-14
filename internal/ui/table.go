@@ -16,6 +16,14 @@ func NewTable(headers ...string) *table.Table {
 	)
 }
 
+func NewTitledTable(title string, headers ...string) *table.Table {
+	return table.NewTableWithOptions(headers,
+		table.WithBox(box.ROUNDED),
+		table.WithExpand(),
+		table.WithTitle(title),
+	)
+}
+
 func PrintError(msg string) { gorich.Println("[red]✗[/] " + msg) }
 func PrintInfo(msg string)  { gorich.Println("[cyan]→[/] " + msg) }
 func PrintDim(msg string)   { gorich.Println("[dim]" + msg + "[/]") }

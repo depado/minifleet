@@ -204,7 +204,7 @@ Examples:
 		},
 	}
 
-	addFilterFlags(cmd, &filters)
+	addLocalFilterFlags(cmd, &filters)
 	cmd.Flags().BoolVar(&summary, "summary", false, "force summary mode (one block per repo with captured output)")
 	cmd.Flags().BoolVar(&progress, "progress", false, "force live block mode (animated spinners + streaming output)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would run; do not execute")

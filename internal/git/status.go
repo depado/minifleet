@@ -8,9 +8,11 @@ import (
 
 type RepoStatus struct {
 	Branch     string
+	Remote     string
 	Behind     int
 	Ahead      int
 	Dirty      bool
+	Untracked  int
 	StashCount int
 }
 
@@ -20,7 +22,9 @@ func Status(ctx context.Context, dir string) (*RepoStatus, error) {
 		return nil, err
 	}
 
-	dirty := checkDirty(ctx, dir)
+	remote, _ := run(ctx, dir, "remote", "get-url", "origin")
+
+	dirty, untracked := checkDirty(ctx, dir)
 
 	behind, ahead := 0, 0
 	if upstream, err := run(ctx, dir, "rev-parse", "--abbrev-ref", "@{upstream}"); err == nil && upstream != "" {
@@ -31,19 +35,28 @@ func Status(ctx context.Context, dir string) (*RepoStatus, error) {
 
 	return &RepoStatus{
 		Branch:     branch,
+		Remote:     remote,
 		Behind:     behind,
 		Ahead:      ahead,
 		Dirty:      dirty,
+		Untracked:  untracked,
 		StashCount: stashCount,
 	}, nil
 }
 
-func checkDirty(ctx context.Context, dir string) bool {
+func checkDirty(ctx context.Context, dir string) (dirty bool, untracked int) {
 	out, err := run(ctx, dir, "status", "--porcelain")
-	if err != nil {
-		return false
+	if err != nil || out == "" {
+		return false, 0
 	}
-	return len(out) > 0
+	for line := range strings.SplitSeq(out, "\n") {
+		if strings.HasPrefix(line, "??") {
+			untracked++
+		} else if line != "" {
+			dirty = true
+		}
+	}
+	return dirty, untracked
 }
 
 func countAheadBehind(ctx context.Context, dir string) (behind, ahead int, err error) {
