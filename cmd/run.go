@@ -415,12 +415,3 @@ func printRunSummary(result *fleet.BulkResult) {
 		}
 	}
 }
-
-// indent prefixes each line of s with prefix. Used by test helpers.
-func indent(s, prefix string) string {
-	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
-	for i, l := range lines {
-		lines[i] = prefix + l
-	}
-	return strings.Join(lines, "\n") + "\n"
-}
