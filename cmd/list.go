@@ -42,9 +42,9 @@ func newListCmd() *cobra.Command {
 
 			owner := args[0]
 			prov, err := github.New(conf.GitHub.Token, conf.GitHub.Host)
-		if err != nil {
-			return err
-		}
+			if err != nil {
+				return err
+			}
 			target, _ := resolveFleet(conf, prov.Host(), owner)
 			tasks, err := manifestToTasks(target, filters)
 			if err != nil {

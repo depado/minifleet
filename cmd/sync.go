@@ -35,9 +35,9 @@ func newSyncCmd() *cobra.Command {
 
 			ctx := cmd.Context()
 			prov, err := github.New(conf.GitHub.Token, conf.GitHub.Host)
-		if err != nil {
-			return err
-		}
+			if err != nil {
+				return err
+			}
 
 			var results []fleet.BulkResult
 			collect := func(r *fleet.BulkResult) {

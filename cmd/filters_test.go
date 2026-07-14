@@ -126,9 +126,18 @@ func TestApplyTasksHasFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	os.WriteFile(filepath.Join(apiDir, "go.mod"), []byte("module o/svc-api\n"), 0o644)
-	os.WriteFile(filepath.Join(apiDir, "main.go"), []byte("package main\n"), 0o644)
-	os.WriteFile(filepath.Join(looseDir, "Makefile"), []byte("all:\n"), 0o644)
+	for _, f := range []struct {
+		path    string
+		content string
+	}{
+		{filepath.Join(apiDir, "go.mod"), "module o/svc-api\n"},
+		{filepath.Join(apiDir, "main.go"), "package main\n"},
+		{filepath.Join(looseDir, "Makefile"), "all:\n"},
+	} {
+		if err := os.WriteFile(f.path, []byte(f.content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	tasks := []taskWithName{
 		{RepoName: "svc-api", FullName: "o/svc-api", ID: "/x/svc-api", Dir: apiDir},
@@ -182,8 +191,17 @@ func TestApplyTasksIfCmd(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	os.WriteFile(filepath.Join(apiDir, "go.mod"), []byte("module o/svc-api\n\ngo 1.21\nrequire (\n\tgithub.com/foo/bar v2.3.0\n)\n"), 0o644)
-	os.WriteFile(filepath.Join(looseDir, "Makefile"), []byte("all:\n"), 0o644)
+	for _, f := range []struct {
+		path    string
+		content string
+	}{
+		{filepath.Join(apiDir, "go.mod"), "module o/svc-api\n\ngo 1.21\nrequire (\n\tgithub.com/foo/bar v2.3.0\n)\n"},
+		{filepath.Join(looseDir, "Makefile"), "all:\n"},
+	} {
+		if err := os.WriteFile(f.path, []byte(f.content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	tasks := []taskWithName{
 		{RepoName: "svc-api", FullName: "o/svc-api", ID: "/x/svc-api", Dir: apiDir},
