@@ -113,7 +113,7 @@ minifleet status
 └──────────────┴────────┴────────┴───────┴───────┴───────┘
 ```
 
-`status` picks up the fleet in CWD when invoked inside a fleet directory, or iterates all `known_fleets` otherwise.
+`status` picks up the fleet in the current directory when invoked inside a fleet directory, or iterates all `known_fleets` otherwise.
 
 ### 6. Open PRs with CI status
 
@@ -197,7 +197,7 @@ Run `discover` again at any time to pick up new repos or refresh API-tracked met
 minifleet sync [owner] [flags]
 ```
 
-Clone missing repos and pull existing ones from the `fleet.yml` manifest. Purely local — no API calls. When no owner is given, syncs the fleet in CWD (or all known fleets if not in one). Errors if no manifest exists (run `discover` first).
+Clone missing repos and pull existing ones from the `fleet.yml` manifest. Purely local — no API calls. When no owner is given, syncs the fleet in the current directory (or all known fleets if not in one). Errors if no manifest exists (run `discover` first).
 
 **Fleet directory resolution** (first match wins):
 
@@ -234,7 +234,7 @@ minifleet --fleet.shallow sync depado
 minifleet list [owner] [flags]
 ```
 
-List repositories. Uses the local manifest when available; falls back to fetching from the GitHub API if no manifest exists. Without an owner, lists repos from the fleet in CWD (or all known fleets). Output as `table` (default), `json`, or `yaml`.
+List repositories. Uses the local manifest when available; falls back to fetching from the GitHub API if no manifest exists. Without an owner, lists repos from the fleet in the current directory (or all known fleets). Output as `table` (default), `json`, or `yaml`.
 
 ```
 Flags:
@@ -273,7 +273,7 @@ minifleet list depado --format yaml > fleet.yml
 minifleet status [flags]
 ```
 
-Show git status for repos in the fleet. Uses the manifest as the source of truth for which repos to check; falls back to scanning the filesystem if no manifest exists. Operates on the fleet in CWD when one is present, otherwise iterates all known fleets. Repos not yet cloned are skipped.
+Show git status for repos in the fleet. Uses the manifest as the source of truth for which repos to check; falls back to scanning the filesystem if no manifest exists. Operates on the fleet in the current directory when one is present, otherwise iterates all known fleets. Repos not yet cloned are skipped.
 
 ```
 Flags:
@@ -298,7 +298,7 @@ Flags:
 minifleet prs [owner] [flags]
 ```
 
-List open pull requests across repositories with CI and review status. Repo list comes from the manifest when available (API fallback if none exists). PR data is always fetched from the API. Without an owner, shows PRs for the fleet in CWD (or all known fleets).
+List open pull requests across repositories with CI and review status. Repo list comes from the manifest when available (API fallback if none exists). PR data is always fetched from the API. Without an owner, shows PRs for the fleet in the current directory (or all known fleets).
 
 ```
 Flags:
@@ -325,7 +325,7 @@ Flags:
 minifleet run -- <command> [flags]
 ```
 
-Run a shell command in every local repository directory (or a filtered subset). Uses the manifest as the source of truth; falls back to filesystem scan if none exists. Repos not yet cloned are skipped. Operates on the fleet in CWD or all known fleets (same discovery as `status`).
+Run a shell command in every local repository directory (or a filtered subset). Uses the manifest as the source of truth; falls back to filesystem scan if none exists. Repos not yet cloned are skipped. Operates on the fleet in the current directory or all known fleets (same discovery as `status`).
 
 ```
 Flags:
@@ -430,7 +430,7 @@ fleet:
 Commands discover the active fleet(s) in this order:
 
 1. `--fleet.path <dir>` (explicit override)
-2. CWD has a `fleet.yml` (use CWD)
+2. The current directory has a `fleet.yml` (use it)
 3. all `known_fleets` (iterate)
 
 `discover <owner>` creates the manifest and registers the fleet in `known_fleets`. `sync <owner>` additionally consults `known_fleets[owner]` as a fallback and re-registers the directory on success.
@@ -480,7 +480,7 @@ minifleet run -H go.mod -H Makefile --if 'grep -q "github.com/foo/bar v2" go.mod
 
 ## One-shot mode
 
-Pass `--fleet.path <dir>` to operate on any directory as if it were a fleet directory, bypassing the normal CWD/known_fleets discovery:
+Pass `--fleet.path <dir>` to operate on any directory as if it were a fleet directory, bypassing the normal current-directory/known_fleets discovery:
 
 ```bash
 # Discover repos directly into a custom directory
@@ -662,7 +662,7 @@ minifleet/
 │   ├── config.go              # init command, SaveConf, RegisterFleet, printConfig
 │   ├── flags.go               # Persistent flag definitions
 │   ├── filters.go             # Filters struct + Apply — shared by every command
-│   ├── fleet.go               # fleetTarget discovery (CWD / known_fleets / --path), manifestToTasks, reposForTarget
+│   ├── fleet.go               # fleetTarget discovery (current dir / known_fleets / --path), manifestToTasks, reposForTarget
 │   ├── discover.go            # discover command — API → fleet.yml
 │   ├── shared.go              # printBulkSummary helper
 │   ├── sync.go                # clone+pull from manifest; syncFromManifest
@@ -684,7 +684,7 @@ minifleet/
 
 - **Local-first**: repos live next to `fleet.yml`; the directory IS the fleet. No central registry needed.
 - **API / local separation**: `discover` talks to the API; `sync`, `status`, and `run` are purely local. The manifest is the explicit bridge.
-- **Discoverable**: `known_fleets` in `config.yml` lets commands run from anywhere; CWD is checked first.
+- **Discoverable**: `known_fleets` in `config.yml` lets commands run from anywhere; the current directory is checked first.
 - **DRY**: every command is short. Filters, executor, and discovery are shared via `manifestToTasks` and `reposForTarget`.
 - **LEAN**: one interface (`Provider`) for platform abstraction; function types elsewhere.
 - **No global state**: configuration flows from `PersistentPreRunE` → context → command `RunE`.

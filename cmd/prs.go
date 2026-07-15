@@ -26,7 +26,7 @@ func newPRsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "prs [owner]",
 		Short: "List open pull requests across repositories with CI and review status",
-		Long:  "Without an owner, shows PRs for the fleet in CWD (or all known fleets).\nWith an owner, uses the local manifest for the repo list; falls back to fetching the repo list from the API if no manifest exists.",
+		Long:  "Without an owner, shows PRs for the fleet in the current directory (or all known fleets).\nWith an owner, uses the local manifest for the repo list; falls back to fetching the repo list from the API if no manifest exists.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, err := confFromCtx(cmd)
@@ -69,9 +69,9 @@ func newPRsCmd() *cobra.Command {
 }
 
 func prsAll(ctx context.Context, conf *Conf, f Filters, state, author string, noDraft bool, format string) error {
-	targets := discoverFleets(conf)
+	targets := discoverFleets(conf, false)
 	if len(targets) == 0 {
-		ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet discover <owner>' first.")
+		ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 		return nil
 	}
 

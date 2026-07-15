@@ -81,9 +81,9 @@ Examples:
 
 			input := strings.Join(args, " ")
 			ctx := cmd.Context()
-			targets := discoverFleets(conf)
+			targets := discoverFleets(conf, false)
 			if len(targets) == 0 {
-				ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet discover <owner>' first.")
+				ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 				return nil
 			}
 

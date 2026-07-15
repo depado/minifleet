@@ -20,12 +20,15 @@ import (
 )
 
 func newSyncCmd() *cobra.Command {
-	var format string
+	var (
+		format string
+		all    bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "sync [owner]",
 		Short: "Clone missing repos and pull existing ones",
-		Long:  "Sync repositories listed in fleet.yml. Does not fetch from the API — run 'discover' first to create or refresh the manifest.",
+		Long:  "Sync repositories listed in fleet.yml. Does not fetch from the API — run 'discover' first to create or refresh the manifest.\nUse --all to sync every known fleet, ignoring the current directory.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, err := confFromCtx(cmd)
@@ -46,8 +49,8 @@ func newSyncCmd() *cobra.Command {
 				}
 			}
 
-			if len(args) == 0 {
-				err = syncAll(ctx, conf, prov, format, collect)
+			if all || len(args) == 0 {
+				err = syncAll(ctx, conf, prov, format, all, collect)
 			} else {
 				err = syncOne(ctx, conf, prov, args[0], format, collect)
 			}
@@ -63,15 +66,16 @@ func newSyncCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json")
+	addAllFlag(cmd, &all)
 
 	return cmd
 }
 
-func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, format string, collect func(*fleet.BulkResult)) error {
-	targets := discoverFleets(conf)
+func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, format string, all bool, collect func(*fleet.BulkResult)) error {
+	targets := discoverFleets(conf, all)
 	if len(targets) == 0 {
 		if format != "json" {
-			ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet discover <owner>' first.")
+			ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 		}
 		return nil
 	}
@@ -88,7 +92,7 @@ func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner stri
 	target, _ := resolveFleet(conf, prov.Host(), owner)
 
 	if target.Dir == "" {
-		return fmt.Errorf("could not resolve fleet directory for %s (no --fleet.path, CWD, or known_fleets entry)", owner)
+		return fmt.Errorf("could not resolve fleet directory for %s (no --fleet.path, current directory, or known_fleets entry)", owner)
 	}
 
 	return syncTarget(ctx, conf, prov, target, format, collect)

@@ -23,12 +23,13 @@ func newStatusCmd() *cobra.Command {
 	var (
 		filters Filters
 		format  string
+		all     bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show git status overview of all cloned repositories",
-		Long:  "Operates on the fleet in CWD (if fleet.yml is present), or all known fleets otherwise.",
+		Long:  "Operates on the fleet in the current directory (if fleet.yml is present), or all known fleets otherwise. Use --all to always operate on every known fleet.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			conf, err := confFromCtx(cmd)
 			if err != nil {
@@ -36,9 +37,9 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			targets := discoverFleets(conf)
+			targets := discoverFleets(conf, all)
 			if len(targets) == 0 {
-				ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet discover <owner>' first.")
+				ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 				return nil
 			}
 
@@ -69,6 +70,7 @@ func newStatusCmd() *cobra.Command {
 	}
 
 	addLocalFilterFlags(cmd, &filters)
+	addAllFlag(cmd, &all)
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json")
 
 	return cmd

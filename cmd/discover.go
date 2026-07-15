@@ -48,7 +48,7 @@ func discoverOne(ctx context.Context, conf *Conf, prov provider.Provider, owner 
 	target, _ := resolveFleet(conf, host, owner)
 
 	if target.Dir == "" {
-		return fmt.Errorf("could not resolve fleet directory for %s (no --fleet.path, CWD, or known_fleets entry)", owner)
+		return fmt.Errorf("could not resolve fleet directory for %s (no --fleet.path, current directory, or known_fleets entry)", owner)
 	}
 
 	isOrg, err := prov.DetectOwner(ctx, owner)

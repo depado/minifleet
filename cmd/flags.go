@@ -28,3 +28,7 @@ func addUIFlags(c *cobra.Command) {
 	c.PersistentFlags().Bool("ui.progress", true, "show progress bars")
 	c.PersistentFlags().Bool("ui.color", true, "enable colored output")
 }
+
+func addAllFlag(c *cobra.Command, all *bool) {
+	c.Flags().BoolVarP(all, "all", "A", false, "operate on all known fleets, ignoring the current directory")
+}

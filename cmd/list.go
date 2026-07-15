@@ -21,12 +21,13 @@ func newListCmd() *cobra.Command {
 		filters Filters
 		format  string
 		limit   int
+		all     bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "list [owner]",
 		Short: "List repositories from the manifest, or from GitHub if no manifest exists",
-		Long:  "Without an owner, lists repositories from the fleet in CWD (or all known fleets).\nWith an owner, uses the local manifest; falls back to fetching from the API if no manifest exists.",
+		Long:  "Without an owner, lists repositories from the fleet in the current directory (or all known fleets).\nWith an owner, uses the local manifest; falls back to fetching from the API if no manifest exists.\nUse --all to always list every known fleet, ignoring the current directory.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, err := confFromCtx(cmd)
@@ -36,8 +37,8 @@ func newListCmd() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			if len(args) == 0 {
-				return listAll(ctx, conf, filters, format)
+			if all || len(args) == 0 {
+				return listAll(ctx, conf, filters, format, all)
 			}
 
 			owner := args[0]
@@ -60,16 +61,17 @@ func newListCmd() *cobra.Command {
 	}
 
 	addFilterFlags(cmd, &filters)
+	addAllFlag(cmd, &all)
 	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, yaml")
 	cmd.Flags().IntVar(&limit, "limit", 1000, "max repos to list")
 
 	return cmd
 }
 
-func listAll(ctx context.Context, conf *Conf, f Filters, format string) error {
-	targets := discoverFleets(conf)
+func listAll(ctx context.Context, conf *Conf, f Filters, format string, all bool) error {
+	targets := discoverFleets(conf, all)
 	if len(targets) == 0 {
-		ui.PrintDim("No fleet in CWD and no known fleets. Run 'minifleet discover <owner>' first.")
+		ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 		return nil
 	}
 

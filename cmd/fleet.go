@@ -22,9 +22,9 @@ type fleetTarget struct {
 // resolveFleet returns the directory to operate on for a command with an owner.
 // Resolution order:
 //  1. --fleet.path (explicit one-shot override)
-//  2. CWD if its fleet.yml matches the owner
+//  2. current directory if its fleet.yml matches the owner
 //  3. known_fleets[owner]
-//  4. CWD without fleet.yml (e.g. discover into a fresh directory)
+//  4. current directory without fleet.yml (e.g. discover into a fresh directory)
 //
 // Returns an empty target when no directory can be resolved.
 func resolveFleet(conf *Conf, host, owner string) (fleetTarget, bool) {
@@ -40,7 +40,7 @@ func resolveFleet(conf *Conf, host, owner string) (fleetTarget, bool) {
 		return fleetTarget{Owner: resolvedOwner, Dir: dir}, mf != nil
 	}
 
-	// 2. CWD with a matching fleet.yml
+	// 2. current directory with a matching fleet.yml
 	var cwdFallback fleetTarget
 	if cwd, err := os.Getwd(); err == nil {
 		mf, _ := manifest.Load(manifest.Path(cwd))
@@ -65,7 +65,7 @@ func resolveFleet(conf *Conf, host, owner string) (fleetTarget, bool) {
 		}
 	}
 
-	// 4. CWD without a manifest
+	// 4. current directory without a manifest
 	if cwdFallback.Dir != "" {
 		slog.Debug("resolving fleet from current directory (no manifest)", "dir", cwdFallback.Dir, "owner", owner)
 		return cwdFallback, false
@@ -77,25 +77,30 @@ func resolveFleet(conf *Conf, host, owner string) (fleetTarget, bool) {
 // discoverFleets returns the fleet targets a no-owner command (status, run)
 // should operate on. Order:
 //  1. --fleet.path
-//  2. CWD if it contains fleet.yml
+//  2. current directory if it contains fleet.yml
 //  3. all known_fleets (sorted by owner)
-func discoverFleets(conf *Conf) []fleetTarget {
-	// 1. --fleet.path
-	if conf.Fleet.Path != "" {
-		dir := expandPath(conf.Fleet.Path)
-		slog.Debug("discovering fleets from --fleet.path", "dir", dir)
-		owner := ""
-		if mf, _ := manifest.Load(manifest.Path(dir)); mf != nil {
-			owner = mf.Owner
+//
+// When all is true, steps 1 and 2 are skipped: the command always operates on
+// every known fleet, ignoring --fleet.path and the current directory.
+func discoverFleets(conf *Conf, all bool) []fleetTarget {
+	if !all {
+		// 1. --fleet.path
+		if conf.Fleet.Path != "" {
+			dir := expandPath(conf.Fleet.Path)
+			slog.Debug("discovering fleets from --fleet.path", "dir", dir)
+			owner := ""
+			if mf, _ := manifest.Load(manifest.Path(dir)); mf != nil {
+				owner = mf.Owner
+			}
+			return []fleetTarget{{Owner: owner, Dir: dir}}
 		}
-		return []fleetTarget{{Owner: owner, Dir: dir}}
-	}
 
-	// 2. CWD has fleet.yml
-	if cwd, err := os.Getwd(); err == nil {
-		if mf, err := manifest.Load(manifest.Path(cwd)); err == nil && mf != nil {
-			slog.Debug("discovering fleets from current directory fleet.yml", "dir", cwd, "owner", mf.Owner)
-			return []fleetTarget{{Owner: mf.Owner, Dir: cwd}}
+		// 2. current directory has fleet.yml
+		if cwd, err := os.Getwd(); err == nil {
+			if mf, err := manifest.Load(manifest.Path(cwd)); err == nil && mf != nil {
+				slog.Debug("discovering fleets from current directory fleet.yml", "dir", cwd, "owner", mf.Owner)
+				return []fleetTarget{{Owner: mf.Owner, Dir: cwd}}
+			}
 		}
 	}
 
