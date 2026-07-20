@@ -29,8 +29,8 @@ func TestCountAheadBehind(t *testing.T) {
 		}
 	}
 
-	gitRunAt(tmp, "init", "--bare", remoteDir)
-	gitRunAt(tmp, "clone", remoteDir, setupDir)
+	gitRunAt(tmp, "-c", "init.defaultBranch=main", "init", "--bare", remoteDir)
+	gitRunAt(tmp, "-c", "init.defaultBranch=main", "clone", remoteDir, setupDir)
 	gitRunAt(setupDir, "config", "user.email", "test@test.com")
 	gitRunAt(setupDir, "config", "user.name", "test")
 	if err := os.WriteFile(filepath.Join(setupDir, "seed.txt"), []byte("seed"), 0o644); err != nil {
@@ -38,9 +38,9 @@ func TestCountAheadBehind(t *testing.T) {
 	}
 	gitRunAt(setupDir, "add", ".")
 	gitRunAt(setupDir, "commit", "-m", "seed")
-	gitRunAt(setupDir, "push", "origin", "main")
+	gitRunAt(setupDir, "push", "origin", "HEAD:main")
 
-	gitRunAt(tmp, "clone", remoteDir, localDir)
+	gitRunAt(tmp, "-c", "init.defaultBranch=main", "clone", remoteDir, localDir)
 	gitRunAt(localDir, "config", "user.email", "test@test.com")
 	gitRunAt(localDir, "config", "user.name", "test")
 
@@ -60,7 +60,7 @@ func TestCountAheadBehind(t *testing.T) {
 		t.Errorf("one commit ahead: want (0,1), got (%d,%d)", b, a)
 	}
 
-	gitRunAt(localDir, "push", "origin", "main")
+	gitRunAt(localDir, "push", "origin", "HEAD:main")
 
 	b, a = CountAheadBehind(ctx, localDir)
 	if b != 0 || a != 0 {

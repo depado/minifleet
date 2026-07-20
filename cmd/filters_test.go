@@ -322,8 +322,8 @@ func TestApplyTasksAheadBehind(t *testing.T) {
 		}
 	}
 
-	gitRun(tmp, "init", "--bare", remoteDir)
-	gitRun(tmp, "clone", remoteDir, setupDir)
+	gitRun(tmp, "-c", "init.defaultBranch=main", "init", "--bare", remoteDir)
+	gitRun(tmp, "-c", "init.defaultBranch=main", "clone", remoteDir, setupDir)
 	gitRun(setupDir, "config", "user.email", "test@test.com")
 	gitRun(setupDir, "config", "user.name", "test")
 	if err := os.WriteFile(filepath.Join(setupDir, "seed.txt"), []byte("seed"), 0o644); err != nil {
@@ -331,13 +331,13 @@ func TestApplyTasksAheadBehind(t *testing.T) {
 	}
 	gitRun(setupDir, "add", ".")
 	gitRun(setupDir, "commit", "-m", "seed")
-	gitRun(setupDir, "push", "origin", "main")
+	gitRun(setupDir, "push", "origin", "HEAD:main")
 
-	gitRun(tmp, "clone", remoteDir, alignedDir)
+	gitRun(tmp, "-c", "init.defaultBranch=main", "clone", remoteDir, alignedDir)
 	gitRun(alignedDir, "config", "user.email", "test@test.com")
 	gitRun(alignedDir, "config", "user.name", "test")
 
-	gitRun(tmp, "clone", remoteDir, aheadDir)
+	gitRun(tmp, "-c", "init.defaultBranch=main", "clone", remoteDir, aheadDir)
 	gitRun(aheadDir, "config", "user.email", "test@test.com")
 	gitRun(aheadDir, "config", "user.name", "test")
 	if err := os.WriteFile(filepath.Join(aheadDir, "g.txt"), []byte("b"), 0o644); err != nil {
@@ -405,8 +405,8 @@ func TestApplyTasksWip(t *testing.T) {
 		}
 	}
 
-	gitRun(tmp, "init", "--bare", remoteDir)
-	gitRun(tmp, "clone", remoteDir, setupDir)
+	gitRun(tmp, "-c", "init.defaultBranch=main", "init", "--bare", remoteDir)
+	gitRun(tmp, "-c", "init.defaultBranch=main", "clone", remoteDir, setupDir)
 	gitRun(setupDir, "config", "user.email", "test@test.com")
 	gitRun(setupDir, "config", "user.name", "test")
 	if err := os.WriteFile(filepath.Join(setupDir, "seed.txt"), []byte("seed"), 0o644); err != nil {
@@ -414,13 +414,13 @@ func TestApplyTasksWip(t *testing.T) {
 	}
 	gitRun(setupDir, "add", ".")
 	gitRun(setupDir, "commit", "-m", "seed")
-	gitRun(setupDir, "push", "origin", "main")
+	gitRun(setupDir, "push", "origin", "HEAD:main")
 
-	gitRun(tmp, "clone", remoteDir, alignedDir)
+	gitRun(tmp, "-c", "init.defaultBranch=main", "clone", remoteDir, alignedDir)
 	gitRun(alignedDir, "config", "user.email", "test@test.com")
 	gitRun(alignedDir, "config", "user.name", "test")
 
-	gitRun(tmp, "clone", remoteDir, aheadDir)
+	gitRun(tmp, "-c", "init.defaultBranch=main", "clone", remoteDir, aheadDir)
 	gitRun(aheadDir, "config", "user.email", "test@test.com")
 	gitRun(aheadDir, "config", "user.name", "test")
 	if err := os.WriteFile(filepath.Join(aheadDir, "g.txt"), []byte("b"), 0o644); err != nil {
@@ -429,7 +429,7 @@ func TestApplyTasksWip(t *testing.T) {
 	gitRun(aheadDir, "add", ".")
 	gitRun(aheadDir, "commit", "-m", "ahead-commit")
 
-	gitRun(tmp, "clone", remoteDir, dirtyDir)
+	gitRun(tmp, "-c", "init.defaultBranch=main", "clone", remoteDir, dirtyDir)
 	gitRun(dirtyDir, "config", "user.email", "test@test.com")
 	gitRun(dirtyDir, "config", "user.name", "test")
 	if err := os.WriteFile(filepath.Join(dirtyDir, "seed.txt"), []byte("modified"), 0o644); err != nil {
