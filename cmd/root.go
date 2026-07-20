@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/spf13/cobra"
@@ -24,6 +25,9 @@ func Setup(root *cobra.Command) {
 	addGitHubFlags(root)
 	addFleetFlags(root)
 	addUIFlags(root)
+	addFormatFlag(root)
+	addAllFlag(root)
+	addPlanFlag(root)
 
 	root.AddCommand(versionCmd)
 
@@ -37,6 +41,23 @@ func Setup(root *cobra.Command) {
 		lg.Debug("starting", "version", Version, "build", Build, "date", BuildDate)
 
 		ctx := context.WithValue(cmd.Context(), confKey{}, conf)
+
+		planPath, _ := cmd.Flags().GetString("plan")
+		if planPath != "" {
+			plan, err := LoadPlan(planPath)
+			if err != nil {
+				return fmt.Errorf("plan: %w", err)
+			}
+			ctx = ctxWithPlan(ctx, plan)
+
+			if !cmd.Flags().Changed("format") && plan.Format != "" {
+				sharedFormat = plan.Format
+			}
+			if !cmd.Flags().Changed("all") {
+				sharedAll = plan.All
+			}
+		}
+
 		cmd.SetContext(ctx)
 		return nil
 	}

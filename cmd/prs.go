@@ -20,7 +20,6 @@ func newPRsCmd() *cobra.Command {
 		state   string
 		author  string
 		noDraft bool
-		format  string
 	)
 
 	cmd := &cobra.Command{
@@ -35,9 +34,11 @@ func newPRsCmd() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
+			plan := planFromCtx(ctx)
+			ApplyPlan(&filters, plan, cmd)
 
 			if len(args) == 0 {
-				return prsAll(ctx, conf, filters, state, author, noDraft, format)
+				return prsAll(ctx, conf, filters, plan, state, author, noDraft)
 			}
 
 			owner := args[0]
@@ -52,10 +53,10 @@ func newPRsCmd() *cobra.Command {
 				return err
 			}
 			if len(tasks) == 0 {
-				return prsFromAPI(ctx, conf, prov, owner, filters, state, author, noDraft, format)
+				return prsFromAPI(ctx, conf, prov, owner, filters, state, author, noDraft)
 			}
 
-			return execPRs(ctx, conf, prov, owner, tasks, state, author, noDraft, format)
+			return execPRs(ctx, conf, prov, owner, tasks, state, author, noDraft)
 		},
 	}
 
@@ -63,13 +64,15 @@ func newPRsCmd() *cobra.Command {
 	cmd.Flags().StringVar(&state, "state", "open", "filter by state: open, closed, all")
 	cmd.Flags().StringVarP(&author, "author", "a", "", "filter by PR author")
 	cmd.Flags().BoolVar(&noDraft, "no-draft", false, "exclude draft PRs")
-	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json")
 
 	return cmd
 }
 
-func prsAll(ctx context.Context, conf *Conf, f Filters, state, author string, noDraft bool, format string) error {
-	targets := discoverFleets(conf, false)
+func prsAll(ctx context.Context, conf *Conf, f Filters, plan *Plan, state, author string, noDraft bool) error {
+	targets, err := planTargets(conf, plan, sharedAll)
+	if err != nil {
+		return err
+	}
 	if len(targets) == 0 {
 		ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 		return nil
@@ -87,14 +90,14 @@ func prsAll(ctx context.Context, conf *Conf, f Filters, state, author string, no
 		if len(tasks) == 0 {
 			continue
 		}
-		if err := execPRs(ctx, conf, prov, t.Owner, tasks, state, author, noDraft, format); err != nil {
+		if err := execPRs(ctx, conf, prov, t.Owner, tasks, state, author, noDraft); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func prsFromAPI(ctx context.Context, conf *Conf, prov provider.Provider, owner string, f Filters, state, author string, noDraft bool, format string) error {
+func prsFromAPI(ctx context.Context, conf *Conf, prov provider.Provider, owner string, f Filters, state, author string, noDraft bool) error {
 	isOrg, err := prov.DetectOwner(ctx, owner)
 	if err != nil {
 		return fmt.Errorf("detect owner: %w", err)
@@ -124,13 +127,13 @@ func prsFromAPI(ctx context.Context, conf *Conf, prov provider.Provider, owner s
 		}
 	}
 
-	return execPRs(ctx, conf, prov, owner, tasks, state, author, noDraft, format)
+	return execPRs(ctx, conf, prov, owner, tasks, state, author, noDraft)
 }
 
-func execPRs(ctx context.Context, conf *Conf, prov provider.Provider, owner string, tasks []fleet.RepoTask, state, author string, noDraft bool, format string) error {
+func execPRs(ctx context.Context, conf *Conf, prov provider.Provider, owner string, tasks []fleet.RepoTask, state, author string, noDraft bool) error {
 	exec := fleet.NewExecutor(fleet.ExecutorConfig{
 		Concurrency: conf.Fleet.Concurrent,
-		Progress:    conf.UI.Progress && format != "json",
+		Progress:    conf.UI.Progress && sharedFormat != "json",
 		ProgressConfig: fleet.ProgressConfig{
 			Description: "Fetching pull requests",
 		},
@@ -173,7 +176,7 @@ func execPRs(ctx context.Context, conf *Conf, prov provider.Provider, owner stri
 		return prs, nil
 	})
 
-	switch format {
+	switch sharedFormat {
 	case "json":
 		return outputPRsJSON(result)
 	default:

@@ -2,6 +2,11 @@ package cmd
 
 import "github.com/spf13/cobra"
 
+var (
+	sharedFormat string
+	sharedAll    bool
+)
+
 func addConfigurationFlag(c *cobra.Command) {
 	c.PersistentFlags().StringP("conf", "c", "", "configuration file to use")
 }
@@ -29,6 +34,14 @@ func addUIFlags(c *cobra.Command) {
 	c.PersistentFlags().Bool("ui.color", true, "enable colored output")
 }
 
-func addAllFlag(c *cobra.Command, all *bool) {
-	c.Flags().BoolVarP(all, "all", "A", false, "operate on all known fleets, ignoring the current directory")
+func addFormatFlag(c *cobra.Command) {
+	c.PersistentFlags().StringVarP(&sharedFormat, "format", "f", "table", "output format (table, json, yaml)")
+}
+
+func addAllFlag(c *cobra.Command) {
+	c.PersistentFlags().BoolVarP(&sharedAll, "all", "A", false, "operate on all known fleets, ignoring the current directory")
+}
+
+func addPlanFlag(c *cobra.Command) {
+	c.PersistentFlags().StringP("plan", "p", "", "load plan from YAML file (filters, command, fleet)")
 }

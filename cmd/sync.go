@@ -20,11 +20,6 @@ import (
 )
 
 func newSyncCmd() *cobra.Command {
-	var (
-		format string
-		all    bool
-	)
-
 	cmd := &cobra.Command{
 		Use:   "sync [owner]",
 		Short: "Clone missing repos and pull existing ones",
@@ -44,68 +39,69 @@ func newSyncCmd() *cobra.Command {
 
 			var results []fleet.BulkResult
 			collect := func(r *fleet.BulkResult) {
-				if format == "json" {
+				if sharedFormat == "json" {
 					results = append(results, *r)
 				}
 			}
 
-			if all || len(args) == 0 {
-				err = syncAll(ctx, conf, prov, format, all, collect)
+			if sharedAll || len(args) == 0 {
+				plan := planFromCtx(ctx)
+				err = syncAll(ctx, conf, prov, plan, collect)
 			} else {
-				err = syncOne(ctx, conf, prov, args[0], format, collect)
+				err = syncOne(ctx, conf, prov, args[0], collect)
 			}
 			if err != nil {
 				return err
 			}
 
-			if format == "json" {
+			if sharedFormat == "json" {
 				return outputSyncJSON(results)
 			}
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json")
-	addAllFlag(cmd, &all)
-
 	return cmd
 }
 
-func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, format string, all bool, collect func(*fleet.BulkResult)) error {
-	targets := discoverFleets(conf, all)
+func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, plan *Plan, collect func(*fleet.BulkResult)) error {
+	targets, err := planTargets(conf, plan, sharedAll)
+	if err != nil {
+		return err
+	}
 	if len(targets) == 0 {
-		if format != "json" {
+		if sharedFormat != "json" {
 			ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 		}
 		return nil
 	}
 
 	for _, t := range targets {
-		if err := syncTarget(ctx, conf, prov, t, format, collect); err != nil {
+		if err := syncTarget(ctx, conf, prov, t, collect); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner string, format string, collect func(*fleet.BulkResult)) error {
+func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner string, collect func(*fleet.BulkResult)) error {
 	target, _ := resolveFleet(conf, prov.Host(), owner)
 
 	if target.Dir == "" {
 		return fmt.Errorf("could not resolve fleet directory for %s (no --fleet.path, current directory, or known_fleets entry)", owner)
 	}
 
-	return syncTarget(ctx, conf, prov, target, format, collect)
+	return syncTarget(ctx, conf, prov, target, collect)
 }
 
-func syncTarget(ctx context.Context, conf *Conf, prov provider.Provider, target fleetTarget, format string, collect func(*fleet.BulkResult)) error {
+func syncTarget(ctx context.Context, conf *Conf, prov provider.Provider, target fleetTarget, collect func(*fleet.BulkResult)) error {
 	mf := loadFleetManifest(target)
 
 	if mf == nil {
 		return fmt.Errorf("no fleet.yml in %s — run 'minifleet discover %s' first", target.Dir, target.Owner)
 	}
 
-	return syncFromManifest(ctx, conf, prov, target, mf, format, collect)
+	return syncFromManifest(ctx, conf, prov, target, mf, collect)
 }
 
 type syncJSONResult struct {
@@ -167,7 +163,7 @@ func setProtocol(idx map[string]*manifest.ManifestRepo, fullName, protocol strin
 	}
 }
 
-func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t fleetTarget, mf *manifest.FleetManifest, format string, collect func(*fleet.BulkResult)) error {
+func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t fleetTarget, mf *manifest.FleetManifest, collect func(*fleet.BulkResult)) error {
 	idx := mf.Index()
 	shallow := conf.Fleet.Shallow
 
@@ -191,7 +187,7 @@ func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t
 
 	exec := fleet.NewExecutor(fleet.ExecutorConfig{
 		Concurrency: conf.Fleet.Concurrent,
-		Progress:    conf.UI.Progress && format != "json",
+		Progress:    conf.UI.Progress && sharedFormat != "json",
 		ProgressConfig: fleet.ProgressConfig{
 			Description: fmt.Sprintf("Syncing %s", t.Owner),
 		},
@@ -242,7 +238,7 @@ func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t
 			slog.Warn("failed to save manifest after sync", "path", manifest.Path(t.Dir), "error", err)
 		}
 		if err := RegisterFleet(conf, t.Owner, t.Dir); err != nil {
-			if format != "json" {
+			if sharedFormat != "json" {
 				ui.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
 			}
 		}
@@ -250,7 +246,7 @@ func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t
 
 	collect(result)
 
-	if format != "json" {
+	if sharedFormat != "json" {
 		printBulkSummary(result, false)
 	}
 	return nil

@@ -3,7 +3,7 @@ module github.com/depado/minifleet
 go 1.26.1
 
 require (
-	github.com/depado/gorich v1.1.1
+	github.com/depado/gorich v1.1.2
 	github.com/google/go-github/v89 v89.0.0
 	github.com/lmittmann/tint v1.2.0
 	github.com/mattn/go-isatty v0.0.23

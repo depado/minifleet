@@ -27,6 +27,9 @@ func newDiscoverCmd() *cobra.Command {
 				return err
 			}
 
+			plan := planFromCtx(cmd.Context())
+			ApplyPlan(&filters, plan, cmd)
+
 			owner := args[0]
 			ctx := cmd.Context()
 			prov, err := github.New(conf.GitHub.Token, conf.GitHub.Host)

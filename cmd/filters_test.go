@@ -301,6 +301,177 @@ func TestApplyTasksDirty(t *testing.T) {
 	}
 }
 
+func TestApplyTasksAheadBehind(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmp := t.TempDir()
+	remoteDir := filepath.Join(tmp, "remote.git")
+	setupDir := filepath.Join(tmp, "setup")
+	alignedDir := filepath.Join(tmp, "aligned")
+	aheadDir := filepath.Join(tmp, "ahead")
+	plainDir := filepath.Join(tmp, "plain")
+
+	gitRun := func(d string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = d
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	gitRun(tmp, "init", "--bare", remoteDir)
+	gitRun(tmp, "clone", remoteDir, setupDir)
+	gitRun(setupDir, "config", "user.email", "test@test.com")
+	gitRun(setupDir, "config", "user.name", "test")
+	if err := os.WriteFile(filepath.Join(setupDir, "seed.txt"), []byte("seed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(setupDir, "add", ".")
+	gitRun(setupDir, "commit", "-m", "seed")
+	gitRun(setupDir, "push", "origin", "main")
+
+	gitRun(tmp, "clone", remoteDir, alignedDir)
+	gitRun(alignedDir, "config", "user.email", "test@test.com")
+	gitRun(alignedDir, "config", "user.name", "test")
+
+	gitRun(tmp, "clone", remoteDir, aheadDir)
+	gitRun(aheadDir, "config", "user.email", "test@test.com")
+	gitRun(aheadDir, "config", "user.name", "test")
+	if err := os.WriteFile(filepath.Join(aheadDir, "g.txt"), []byte("b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(aheadDir, "add", ".")
+	gitRun(aheadDir, "commit", "-m", "ahead-commit")
+
+	if err := os.MkdirAll(plainDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks := []taskWithName{
+		{RepoName: "ahead", FullName: "o/ahead", ID: "o/ahead", Dir: aheadDir},
+		{RepoName: "aligned", FullName: "o/aligned", ID: "o/aligned", Dir: alignedDir},
+		{RepoName: "plain", FullName: "o/plain", ID: "o/plain", Dir: plainDir},
+	}
+
+	tests := []struct {
+		name string
+		f    Filters
+		want []string
+	}{
+		{"ahead >= 1", Filters{Ahead: 1}, []string{"ahead"}},
+		{"ahead >= 2", Filters{Ahead: 2}, nil},
+		{"behind >= 1 (none behind)", Filters{Behind: 1}, nil},
+		{"both ahead>=1 behind>=1", Filters{Ahead: 1, Behind: 1}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.f.ApplyTasks(tasks, nil)
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			names := make([]string, 0, len(got))
+			for _, g := range got {
+				names = append(names, g.RepoName)
+			}
+			if !equalSets(names, tt.want) {
+				t.Errorf("got %v, want %v", names, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplyTasksWip(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	tmp := t.TempDir()
+	remoteDir := filepath.Join(tmp, "remote.git")
+	setupDir := filepath.Join(tmp, "setup")
+	alignedDir := filepath.Join(tmp, "aligned")
+	aheadDir := filepath.Join(tmp, "ahead")
+	dirtyDir := filepath.Join(tmp, "dirty")
+	plainDir := filepath.Join(tmp, "plain")
+
+	gitRun := func(d string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = d
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	gitRun(tmp, "init", "--bare", remoteDir)
+	gitRun(tmp, "clone", remoteDir, setupDir)
+	gitRun(setupDir, "config", "user.email", "test@test.com")
+	gitRun(setupDir, "config", "user.name", "test")
+	if err := os.WriteFile(filepath.Join(setupDir, "seed.txt"), []byte("seed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(setupDir, "add", ".")
+	gitRun(setupDir, "commit", "-m", "seed")
+	gitRun(setupDir, "push", "origin", "main")
+
+	gitRun(tmp, "clone", remoteDir, alignedDir)
+	gitRun(alignedDir, "config", "user.email", "test@test.com")
+	gitRun(alignedDir, "config", "user.name", "test")
+
+	gitRun(tmp, "clone", remoteDir, aheadDir)
+	gitRun(aheadDir, "config", "user.email", "test@test.com")
+	gitRun(aheadDir, "config", "user.name", "test")
+	if err := os.WriteFile(filepath.Join(aheadDir, "g.txt"), []byte("b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(aheadDir, "add", ".")
+	gitRun(aheadDir, "commit", "-m", "ahead-commit")
+
+	gitRun(tmp, "clone", remoteDir, dirtyDir)
+	gitRun(dirtyDir, "config", "user.email", "test@test.com")
+	gitRun(dirtyDir, "config", "user.name", "test")
+	if err := os.WriteFile(filepath.Join(dirtyDir, "seed.txt"), []byte("modified"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(plainDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tasks := []taskWithName{
+		{RepoName: "ahead", FullName: "o/ahead", ID: "o/ahead", Dir: aheadDir},
+		{RepoName: "aligned", FullName: "o/aligned", ID: "o/aligned", Dir: alignedDir},
+		{RepoName: "dirty", FullName: "o/dirty", ID: "o/dirty", Dir: dirtyDir},
+		{RepoName: "plain", FullName: "o/plain", ID: "o/plain", Dir: plainDir},
+	}
+
+	tests := []struct {
+		name string
+		f    Filters
+		want []string
+	}{
+		{"wip catches ahead and dirty", Filters{Wip: true}, []string{"ahead", "dirty"}},
+		{"wip + ahead > 1", Filters{Wip: true, Ahead: 2}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.f.ApplyTasks(tasks, nil)
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			names := make([]string, 0, len(got))
+			for _, g := range got {
+				names = append(names, g.RepoName)
+			}
+			if !equalSets(names, tt.want) {
+				t.Errorf("got %v, want %v", names, tt.want)
+			}
+		})
+	}
+}
+
 func equalSets(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

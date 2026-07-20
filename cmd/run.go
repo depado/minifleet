@@ -52,7 +52,6 @@ func newRunCmd() *cobra.Command {
 		dryRun      bool
 		shell       string
 		blockLines  int
-		format      string
 	)
 
 	cmd := &cobra.Command{
@@ -71,17 +70,50 @@ Examples:
   minifleet run --progress --block-lines 5 -- "make build"
   minifleet run --summary -- "git branch --show-current"
   minifleet run --format json -- "make test"
-  minifleet run --dry-run -- "rm -f foo.txt"`,
-		Args: cobra.MinimumNArgs(1),
+  minifleet run --dry-run -- "rm -f foo.txt"
+  minifleet run --plan plan.yml`,
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, err := confFromCtx(cmd)
 			if err != nil {
 				return err
 			}
 
-			input := strings.Join(args, " ")
 			ctx := cmd.Context()
-			targets := discoverFleets(conf, false)
+			plan := planFromCtx(ctx)
+			ApplyPlan(&filters, plan, cmd)
+
+			if plan != nil {
+				if !cmd.Flags().Changed("shell") && plan.Shell != "" {
+					shell = plan.Shell
+				}
+				if !cmd.Flags().Changed("dry-run") {
+					dryRun = plan.DryRun
+				}
+				if !cmd.Flags().Changed("summary") {
+					summary = plan.Summary
+				}
+				if !cmd.Flags().Changed("progress") {
+					progress = plan.Progress
+				}
+				if !cmd.Flags().Changed("block-lines") && plan.BlockLines > 0 {
+					blockLines = plan.BlockLines
+				}
+			}
+
+			input := strings.Join(args, " ")
+			if input == "" {
+				if plan != nil && plan.Command != "" {
+					input = plan.Command
+				} else {
+					return fmt.Errorf("no command specified; use --plan with a command field, or pass args after --")
+				}
+			}
+
+			targets, err := planTargets(conf, plan, sharedAll)
+			if err != nil {
+				return err
+			}
 			if len(targets) == 0 {
 				ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 				return nil
@@ -123,7 +155,7 @@ Examples:
 				return nil
 			}
 
-			jsonMode := format == "json"
+			jsonMode := sharedFormat == "json"
 
 			// Determine display mode.
 			// --progress forces live, --summary forces summary.
@@ -210,7 +242,6 @@ Examples:
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would run; do not execute")
 	cmd.Flags().StringVar(&shell, "shell", "sh", "shell to invoke (default sh)")
 	cmd.Flags().IntVar(&blockLines, "block-lines", 3, "output lines per repo block in live mode")
-	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table (auto), json")
 
 	// Track whether flags were explicitly set by the user.
 	cmd.PreRunE = func(cmd *cobra.Command, args []string) error {

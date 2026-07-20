@@ -39,6 +39,7 @@
 - [Filters](#filters)
 - [One-shot mode (`--fleet.path`)](#one-shot-mode)
 - [Shallow clones (`--fleet.shallow`)](#shallow-clones)
+- [Plan files (`--plan`)](#plan-files)
 - [Manifest File](#manifest-file)
 - [Configuration](#configuration)
 - [Concurrency](#concurrency)
@@ -53,6 +54,7 @@
 - **Local status dashboard** — See the state of all cloned repos: current branch, commits ahead/behind remote, uncommitted changes, stashed changes.
 - **Cross-repo PR dashboard** — List open pull requests across all repos with CI status (success/pending/failure) and review status (approved/changes/pending). Repo list comes from the manifest; PR data from the API.
 - **Unified filters** — Every command that queries the API or filters repos accepts the same filter flags: `--include-regex`, `--exclude-regex`, `--include`, `--exclude`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, `--language`, `--label`, `--group`, `--has-file`, `--if`.
+- **Plan files** — Save filter presets and command options to a YAML file with `--plan`. CLI flags override plan values, making it easy to define and reuse common workflows.
 - **Per-directory fleets** — A `fleet.yml` lives alongside the repos it describes; `config.yml` tracks known fleet directories in `known_fleets`. No path bookkeeping per repo.
 - **One-shot mode** — `--fleet.path <dir>` bypasses discovery for ad-hoc operations in any directory.
 - **GitHub Enterprise** — `--github.host <host>` retargets the API and clone URLs at a GHE instance.
@@ -349,6 +351,8 @@ Flags:
   --format string            output format: table (auto), json
 ```
 
+Global persistent flags (`--plan`, `--format`, `--all`) are available on every command.
+
 Use `--` to separate flags from the command itself.
 
 **Examples:**
@@ -374,6 +378,12 @@ minifleet run --if 'grep -q "go 1.22" go.mod' -- "go vet ./..."
 
 # Dry-run a destructive bulk change
 minifleet run --dry-run --include-regex "^old-" -- "rm -f .env.local"
+
+# Load filters and command from a plan file
+minifleet run --plan plan.yml
+
+# Plan + CLI flag override
+minifleet run --plan go-checks.yml --group backend --dry-run
 ```
 
 **Summary mode** (`--summary`): one line per repo (`✓`/`✗ exit N` + duration); failed repos also print their captured stderr and stdout. This is the default when stdout is not a terminal (piped or redirected).
@@ -478,6 +488,8 @@ minifleet run -H go.mod -H Makefile --if 'grep -q "github.com/foo/bar v2" go.mod
 
 `--label` and `--group` consult the manifest; `--include-regex`, `--exclude-regex`, `--include`, `--exclude`, `--topic`, `--include-archived`, `--include-forks`, `--visibility`, and `--language` work from the manifest data or API response.
 
+Filters can also be declared in a [plan file](#plan-files) via `--plan`, with CLI flag overrides.
+
 ## One-shot mode
 
 Pass `--fleet.path <dir>` to operate on any directory as if it were a fleet directory, bypassing the normal current-directory/known_fleets discovery:
@@ -509,6 +521,89 @@ minifleet --fleet.shallow sync depado
 Shallow clones are smaller and faster but lack full history. They cannot push most commits without unshallowing. Use for one-shots, dashboards, or large fleets where you only need the latest tree. The default (full clone) is recommended for fleets you intend to push from.
 
 Shallow is also available as a config value `fleet.shallow: true`.
+
+## Plan files
+
+Pass `--plan / -p <file>` to load filters, command options, and fleet targeting from a YAML file instead of (or in addition to) CLI flags. CLI flags override plan values, so you can reuse a plan as a default and tweak it per-run.
+
+Any command that accepts filters supports `--plan`. Fields unrelated to a command are silently ignored — a plan written for `run` works with `status` too (the `command` and `shell` fields are ignored).
+
+### Schema
+
+```yaml
+# Fleet targeting (optional — falls back to context)
+fleet: my-org           # target a specific fleet from known_fleets
+all: true               # operate on all known fleets
+
+# Output (optional)
+format: json            # table, json, yaml
+
+# run-specific (optional — ignored by other commands)
+shell: bash             # shell to invoke (default: sh)
+command: "make test"    # command to execute (no -- args needed)
+block_lines: 5          # output lines per block in live mode
+dry_run: false          # print what would run; don't execute
+summary: false          # force summary mode
+progress: true          # force live block mode
+
+# list-specific
+limit: 100              # max repos to list
+
+# Filters (optional — all 15 filter fields are supported)
+filters:
+  include_regex: "^svc-"
+  exclude_regex: "legacy"
+  include: [repo1, repo2]
+  exclude: [repo3]
+  topics: [go, rust]
+  include_archived: false
+  include_forks: false
+  visibility: public
+  language: Go
+  labels: ["tier=1"]
+  group: backend
+  has_files: [go.mod, Dockerfile]
+  if_cmd: "test -f go.mod"
+  dirty: false
+```
+
+### Examples
+
+```bash
+# Define a reusable plan
+cat > go-checks.yml << 'EOF'
+shell: bash
+command: "go vet ./... && go build ./... && go test -race -count=1 ./..."
+block_lines: 8
+filters:
+  if_cmd: "test -f go.mod"
+EOF
+
+# Run it (no CLI args needed — command comes from the plan)
+minifleet run --plan go-checks.yml
+
+# Override a filter: only the backend group, not all Go repos
+minifleet run --plan go-checks.yml --group backend
+
+# Same plan, dry-run to see what would happen
+minifleet run --plan go-checks.yml --dry-run
+
+# Use the same filters with status (command & shell are ignored)
+minifleet status --plan go-checks.yml --format json
+
+# Plan targeting a specific fleet
+minifleet run --plan go-checks.yml  # resolves fleet from context
+# vs: plan has fleet: "work-org" → targets that fleet specifically
+```
+
+### How it works
+
+1. `--plan <file>` is a persistent flag on every command (like `--format` and `--all`)
+2. The YAML is loaded once in the pre-run hook and stored in context
+3. For each filter, command option, or fleet targeting field: the plan provides a default that CLI flags can override
+4. `cmd.Flags().Changed("flag-name")` determines whether the user set the flag — if not, the plan value is used
+
+This makes it easy to define and version-control standard workflows (CI-like checks, lint passes, bulk refactors) without remembering long flag combinations.
 
 ## Manifest File
 
@@ -662,6 +757,7 @@ minifleet/
 │   ├── config.go              # init command, SaveConf, RegisterFleet, printConfig
 │   ├── flags.go               # Persistent flag definitions
 │   ├── filters.go             # Filters struct + Apply — shared by every command
+│   ├── plan.go                # Plan file (--plan): YAML schema, LoadPlan, ApplyPlan
 │   ├── fleet.go               # fleetTarget discovery (current dir / known_fleets / --path), manifestToTasks, reposForTarget
 │   ├── discover.go            # discover command — API → fleet.yml
 │   ├── shared.go              # printBulkSummary helper

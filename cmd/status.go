@@ -20,11 +20,7 @@ type statusRow struct {
 }
 
 func newStatusCmd() *cobra.Command {
-	var (
-		filters Filters
-		format  string
-		all     bool
-	)
+	var filters Filters
 
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -37,7 +33,13 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			targets := discoverFleets(conf, all)
+			plan := planFromCtx(ctx)
+			ApplyPlan(&filters, plan, cmd)
+
+			targets, err := planTargets(conf, plan, sharedAll)
+			if err != nil {
+				return err
+			}
 			if len(targets) == 0 {
 				ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 				return nil
@@ -45,11 +47,11 @@ func newStatusCmd() *cobra.Command {
 
 			var allRows []statusRow
 			for _, t := range targets {
-				rows, err := runStatusForFleet(ctx, conf, t, filters, format)
+				rows, err := runStatusForFleet(ctx, conf, t, filters, sharedFormat)
 				if err != nil {
 					return err
 				}
-				if format == "json" {
+				if sharedFormat == "json" {
 					allRows = append(allRows, rows...)
 					continue
 				}
@@ -58,7 +60,7 @@ func newStatusCmd() *cobra.Command {
 				}
 			}
 
-			if format == "json" {
+			if sharedFormat == "json" {
 				data, err := json.MarshalIndent(allRows, "", "  ")
 				if err != nil {
 					return err
@@ -70,8 +72,6 @@ func newStatusCmd() *cobra.Command {
 	}
 
 	addLocalFilterFlags(cmd, &filters)
-	addAllFlag(cmd, &all)
-	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json")
 
 	return cmd
 }
@@ -130,15 +130,15 @@ func renderStatusTable(title string, rows []statusRow) {
 		} else if r.Status != nil {
 			remote = r.Status.Remote
 			branch = r.Status.Branch
-			behind = fmt.Sprintf("%d", r.Status.Behind)
-			ahead = fmt.Sprintf("%d", r.Status.Ahead)
+			behind = countStr(r.Status.Behind)
+			ahead = countStr(r.Status.Ahead)
 			if r.Status.Dirty {
 				dirty = "[red]yes[/]"
 			} else {
 				dirty = "[dim]no[/]"
 			}
-			untracked = fmt.Sprintf("%d", r.Status.Untracked)
-			stash = fmt.Sprintf("%d", r.Status.StashCount)
+			untracked = countStr(r.Status.Untracked)
+			stash = countStr(r.Status.StashCount)
 		}
 
 		tbl.AddRow(
@@ -153,4 +153,11 @@ func renderStatusTable(title string, rows []statusRow) {
 		)
 	}
 	ui.DefaultConsole.Render(tbl)
+}
+
+func countStr(n int) string {
+	if n > 0 {
+		return fmt.Sprintf("[yellow]%d[/]", n)
+	}
+	return "0"
 }

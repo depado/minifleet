@@ -22,20 +22,23 @@ import (
 // repositories. Flags are bound by addFilterFlags; Apply runs them against a
 // list of repos, optionally consulting the manifest for label/group filtering.
 type Filters struct {
-	IncludeRegex    string
-	ExcludeRegex    string
-	Include         []string
-	Exclude         []string
-	Topics          []string
-	IncludeArchived bool
-	IncludeForks    bool
-	Visibility      string
-	Language        string
-	Labels          []string
-	Group           string
-	HasFiles        []string
-	IfCmd           string
-	Dirty           bool
+	IncludeRegex    string   `yaml:"include_regex,omitempty"`
+	ExcludeRegex    string   `yaml:"exclude_regex,omitempty"`
+	Include         []string `yaml:"include,omitempty"`
+	Exclude         []string `yaml:"exclude,omitempty"`
+	Topics          []string `yaml:"topics,omitempty"`
+	IncludeArchived bool     `yaml:"include_archived,omitempty"`
+	IncludeForks    bool     `yaml:"include_forks,omitempty"`
+	Visibility      string   `yaml:"visibility,omitempty"`
+	Language        string   `yaml:"language,omitempty"`
+	Labels          []string `yaml:"labels,omitempty"`
+	Group           string   `yaml:"group,omitempty"`
+	HasFiles        []string `yaml:"has_files,omitempty"`
+	IfCmd           string   `yaml:"if_cmd,omitempty"`
+	Dirty           bool     `yaml:"dirty,omitempty"`
+	Ahead           int      `yaml:"ahead,omitempty"`
+	Behind          int      `yaml:"behind,omitempty"`
+	Wip             bool     `yaml:"wip,omitempty"`
 }
 
 // addFilterFlags binds the metadata filter flag set on a command. All commands
@@ -63,6 +66,9 @@ func addLocalFilterFlags(c *cobra.Command, f *Filters) {
 	flags.StringArrayVarP(&f.HasFiles, "has-file", "H", nil, "require file to exist in repo dir (repeatable, AND logic)")
 	flags.StringVar(&f.IfCmd, "if", "", "shell command; exit 0 = include repo")
 	flags.BoolVar(&f.Dirty, "dirty", false, "only repos with uncommitted changes to tracked files")
+	flags.IntVar(&f.Ahead, "ahead", 0, "only repos with at least N ahead commits")
+	flags.IntVar(&f.Behind, "behind", 0, "only repos with at least N behind commits")
+	flags.BoolVar(&f.Wip, "wip", false, "only repos with uncommitted, unpushed, or unpulled changes")
 }
 
 // Apply filters a slice of repos. mf may be nil; manifest-based filters are
@@ -202,6 +208,31 @@ func (f Filters) ApplyTasks(tasks []taskWithName, mf *manifest.FleetManifest) ([
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			return git.IsDirty(ctx, dir)
+		})
+	}
+	if f.Ahead > 0 || f.Behind > 0 {
+		out = parallelFilter(out, func(dir string) bool {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			b, a := git.CountAheadBehind(ctx, dir)
+			if f.Ahead > 0 && a < f.Ahead {
+				return false
+			}
+			if f.Behind > 0 && b < f.Behind {
+				return false
+			}
+			return true
+		})
+	}
+	if f.Wip {
+		out = parallelFilter(out, func(dir string) bool {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if git.IsDirty(ctx, dir) {
+				return true
+			}
+			b, a := git.CountAheadBehind(ctx, dir)
+			return a > 0 || b > 0
 		})
 	}
 	return out, nil

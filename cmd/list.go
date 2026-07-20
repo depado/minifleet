@@ -19,9 +19,7 @@ import (
 func newListCmd() *cobra.Command {
 	var (
 		filters Filters
-		format  string
 		limit   int
-		all     bool
 	)
 
 	cmd := &cobra.Command{
@@ -36,9 +34,11 @@ func newListCmd() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
+			plan := planFromCtx(ctx)
+			ApplyPlan(&filters, plan, cmd)
 
-			if all || len(args) == 0 {
-				return listAll(ctx, conf, filters, format, all)
+			if sharedAll || len(args) == 0 {
+				return listAll(ctx, conf, filters, plan)
 			}
 
 			owner := args[0]
@@ -52,24 +52,25 @@ func newListCmd() *cobra.Command {
 				return err
 			}
 			if len(tasks) == 0 {
-				return listFromAPI(ctx, conf, owner, filters, format, limit)
+				return listFromAPI(ctx, conf, owner, filters, limit)
 			}
 
 			mf := loadFleetManifest(target)
-			return outputManifestTable(tasks, mf, format, fleetTitle(target))
+			return outputManifestTable(tasks, mf, sharedFormat, fleetTitle(target))
 		},
 	}
 
 	addFilterFlags(cmd, &filters)
-	addAllFlag(cmd, &all)
-	cmd.Flags().StringVarP(&format, "format", "f", "table", "output format: table, json, yaml")
 	cmd.Flags().IntVar(&limit, "limit", 1000, "max repos to list")
 
 	return cmd
 }
 
-func listAll(ctx context.Context, conf *Conf, f Filters, format string, all bool) error {
-	targets := discoverFleets(conf, all)
+func listAll(ctx context.Context, conf *Conf, f Filters, plan *Plan) error {
+	targets, err := planTargets(conf, plan, sharedAll)
+	if err != nil {
+		return err
+	}
 	if len(targets) == 0 {
 		ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 		return nil
@@ -81,14 +82,14 @@ func listAll(ctx context.Context, conf *Conf, f Filters, format string, all bool
 			return err
 		}
 		mf := loadFleetManifest(t)
-		if err := outputManifestTable(tasks, mf, format, fleetTitle(t)); err != nil {
+		if err := outputManifestTable(tasks, mf, sharedFormat, fleetTitle(t)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func listFromAPI(ctx context.Context, conf *Conf, owner string, f Filters, format string, limit int) error {
+func listFromAPI(ctx context.Context, conf *Conf, owner string, f Filters, limit int) error {
 	prov, err := github.New(conf.GitHub.Token, conf.GitHub.Host)
 	if err != nil {
 		return err
@@ -118,7 +119,7 @@ func listFromAPI(ctx context.Context, conf *Conf, owner string, f Filters, forma
 		repos = repos[:limit]
 	}
 
-	switch format {
+	switch sharedFormat {
 	case "json":
 		return outputJSON(repos)
 	case "yaml":

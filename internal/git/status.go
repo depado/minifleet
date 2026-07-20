@@ -25,11 +25,7 @@ func Status(ctx context.Context, dir string) (*RepoStatus, error) {
 	remote, _ := run(ctx, dir, "remote", "get-url", "origin")
 
 	dirty, untracked := checkDirty(ctx, dir)
-
-	behind, ahead := 0, 0
-	if upstream, err := run(ctx, dir, "rev-parse", "--abbrev-ref", "@{upstream}"); err == nil && upstream != "" {
-		behind, ahead, _ = countAheadBehind(ctx, dir)
-	}
+	behind, ahead := CountAheadBehind(ctx, dir)
 
 	stashCount := countStashes(ctx, dir)
 
@@ -49,6 +45,16 @@ func Status(ctx context.Context, dir string) (*RepoStatus, error) {
 func IsDirty(ctx context.Context, dir string) bool {
 	dirty, _ := checkDirty(ctx, dir)
 	return dirty
+}
+
+// CountAheadBehind returns the number of commits the repo is behind/ahead of its
+// upstream tracking branch. Returns 0,0 when no upstream is configured.
+func CountAheadBehind(ctx context.Context, dir string) (behind, ahead int) {
+	if upstream, err := run(ctx, dir, "rev-parse", "--abbrev-ref", "@{upstream}"); err != nil || upstream == "" {
+		return 0, 0
+	}
+	b, a, _ := countAheadBehind(ctx, dir)
+	return b, a
 }
 
 func checkDirty(ctx context.Context, dir string) (dirty bool, untracked int) {
