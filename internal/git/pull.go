@@ -21,6 +21,10 @@ func Pull(ctx context.Context, dir string) error {
 		return &SkipError{Reason: "detached HEAD, cannot pull"}
 	}
 
+	if _, err := run(ctx, dir, "show-ref", "--verify", "--quiet", "refs/remotes/origin/"+branch); err != nil {
+		return &SkipError{Reason: "no upstream branch origin/" + branch}
+	}
+
 	cmd := exec.CommandContext(ctx, "git", "rebase", fmt.Sprintf("origin/%s", branch), "--autostash")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")

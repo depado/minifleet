@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,7 +103,7 @@ func TestApplyTasks(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.f.ApplyTasks(tasks, mf)
+			got, err := tt.f.ApplyTasks(context.Background(), tasks, mf)
 			if err != nil {
 				t.Fatalf("unexpected err: %v", err)
 			}
@@ -167,7 +168,7 @@ func TestApplyTasksHasFiles(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.f.ApplyTasks(tasks, mf)
+			got, err := tt.f.ApplyTasks(context.Background(), tasks, mf)
 			if err != nil {
 				t.Fatalf("unexpected err: %v", err)
 			}
@@ -229,7 +230,7 @@ func TestApplyTasksIfCmd(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.f.ApplyTasks(tasks, mf)
+			got, err := tt.f.ApplyTasks(context.Background(), tasks, mf)
 			if err != nil {
 				t.Fatalf("unexpected err: %v", err)
 			}
@@ -288,7 +289,7 @@ func TestApplyTasksDirty(t *testing.T) {
 		{RepoName: "plain", FullName: "o/plain", ID: "o/plain", Dir: plainDir},
 	}
 
-	got, err := Filters{Dirty: true}.ApplyTasks(tasks, nil)
+	got, err := Filters{Dirty: true}.ApplyTasks(context.Background(), tasks, nil)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -368,7 +369,7 @@ func TestApplyTasksAheadBehind(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.f.ApplyTasks(tasks, nil)
+			got, err := tt.f.ApplyTasks(context.Background(), tasks, nil)
 			if err != nil {
 				t.Fatalf("unexpected err: %v", err)
 			}
@@ -457,7 +458,7 @@ func TestApplyTasksWip(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.f.ApplyTasks(tasks, nil)
+			got, err := tt.f.ApplyTasks(context.Background(), tasks, nil)
 			if err != nil {
 				t.Fatalf("unexpected err: %v", err)
 			}

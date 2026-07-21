@@ -66,6 +66,7 @@ func Setup(root *cobra.Command) {
 func SetupCommands(root *cobra.Command) {
 	root.AddCommand(
 		newDiscoverCmd(),
+		newFetchCmd(),
 		newInitCmd(),
 		newSyncCmd(),
 		newListCmd(),

@@ -16,7 +16,7 @@ import (
 // subdirectory that is a git repository. The manifest (when non-nil) is
 // consulted to skip ignored repos and to resolve each repo's full_name for
 // filter context.
-func Scan(fleetDir string, targetRegex string, mf *manifest.FleetManifest) ([]RepoTask, error) {
+func Scan(ctx context.Context, fleetDir string, targetRegex string, mf *manifest.FleetManifest) ([]RepoTask, error) {
 	entries, err := os.ReadDir(fleetDir)
 	if err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func Scan(fleetDir string, targetRegex string, mf *manifest.FleetManifest) ([]Re
 		name := e.Name()
 		repoDir := filepath.Join(fleetDir, name)
 
-		if !git.IsRepo(context.Background(), repoDir) {
+		if !git.IsRepo(ctx, repoDir) {
 			continue
 		}
 		if pattern != nil && !pattern.MatchString(name) {
@@ -118,4 +118,11 @@ func lastSegment(fullName string) string {
 		return fullName[i+1:]
 	}
 	return ""
+}
+
+func ShortName(fullName string) string {
+	if i := strings.LastIndexByte(fullName, '/'); i >= 0 {
+		return fullName[i+1:]
+	}
+	return fullName
 }

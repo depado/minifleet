@@ -1,15 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/depado/minifleet/internal/fleet"
 	"github.com/depado/minifleet/internal/manifest"
+	"github.com/depado/minifleet/internal/provider"
 )
 
 // fleetTarget is a single fleet directory + its owner. Commands operate on one
@@ -21,17 +22,17 @@ type fleetTarget struct {
 
 // resolveFleet returns the directory to operate on for a command with an owner.
 // Resolution order:
-//  1. --fleet.path (explicit one-shot override)
+//  1. --path (explicit directory override)
 //  2. current directory if its fleet.yml matches the owner
 //  3. known_fleets[owner]
 //  4. current directory without fleet.yml (e.g. discover into a fresh directory)
 //
 // Returns an empty target when no directory can be resolved.
 func resolveFleet(conf *Conf, host, owner string) (fleetTarget, bool) {
-	// 1. --fleet.path
-	if conf.Fleet.Path != "" {
-		dir := expandPath(conf.Fleet.Path)
-		slog.Debug("resolving fleet from --fleet.path", "dir", dir)
+	// 1. --path
+	if conf.Path != "" {
+		dir := expandPath(conf.Path)
+		slog.Debug("resolving fleet from --path", "dir", dir)
 		mf, _ := manifest.Load(manifest.Path(dir))
 		resolvedOwner := owner
 		if mf != nil && mf.Owner != "" {
@@ -58,8 +59,8 @@ func resolveFleet(conf *Conf, host, owner string) (fleetTarget, bool) {
 	}
 
 	// 3. known_fleets
-	if owner != "" && conf.Fleet.KnownFleets != nil {
-		if dir, ok := conf.Fleet.KnownFleets[owner]; ok && dir != "" {
+	if owner != "" && conf.Fleets != nil {
+		if dir, ok := conf.Fleets[owner]; ok && dir != "" {
 			slog.Debug("resolving fleet from known_fleets", "owner", owner, "dir", dir)
 			return fleetTarget{Owner: owner, Dir: dir}, fileExists(manifest.Path(dir))
 		}
@@ -76,25 +77,22 @@ func resolveFleet(conf *Conf, host, owner string) (fleetTarget, bool) {
 
 // discoverFleets returns the fleet targets a no-owner command (status, run)
 // should operate on. Order:
-//  1. --fleet.path
-//  2. current directory if it contains fleet.yml
+//  1. --path (overrides everything, even --all)
+//  2. current directory if it contains fleet.yml (--all bypasses this)
 //  3. all known_fleets (sorted by owner)
-//
-// When all is true, steps 1 and 2 are skipped: the command always operates on
-// every known fleet, ignoring --fleet.path and the current directory.
 func discoverFleets(conf *Conf, all bool) []fleetTarget {
-	if !all {
-		// 1. --fleet.path
-		if conf.Fleet.Path != "" {
-			dir := expandPath(conf.Fleet.Path)
-			slog.Debug("discovering fleets from --fleet.path", "dir", dir)
-			owner := ""
-			if mf, _ := manifest.Load(manifest.Path(dir)); mf != nil {
-				owner = mf.Owner
-			}
-			return []fleetTarget{{Owner: owner, Dir: dir}}
+	// 1. --path (overrides everything, even --all)
+	if conf.Path != "" {
+		dir := expandPath(conf.Path)
+		slog.Debug("discovering fleets from --path", "dir", dir)
+		owner := ""
+		if mf, _ := manifest.Load(manifest.Path(dir)); mf != nil {
+			owner = mf.Owner
 		}
+		return []fleetTarget{{Owner: owner, Dir: dir}}
+	}
 
+	if !all {
 		// 2. current directory has fleet.yml
 		if cwd, err := os.Getwd(); err == nil {
 			if mf, err := manifest.Load(manifest.Path(cwd)); err == nil && mf != nil {
@@ -105,23 +103,23 @@ func discoverFleets(conf *Conf, all bool) []fleetTarget {
 	}
 
 	// 3. known_fleets
-	if len(conf.Fleet.KnownFleets) == 0 {
+	if len(conf.Fleets) == 0 {
 		slog.Debug("no known_fleets configured")
 		return nil
 	}
-	owners := make([]string, 0, len(conf.Fleet.KnownFleets))
-	for k := range conf.Fleet.KnownFleets {
+	owners := make([]string, 0, len(conf.Fleets))
+	for k := range conf.Fleets {
 		owners = append(owners, k)
 	}
 	sort.Strings(owners)
 	out := make([]fleetTarget, 0, len(owners))
 	for _, o := range owners {
-		dir := conf.Fleet.KnownFleets[o]
+		dir := conf.Fleets[o]
 		if dir == "" {
 			continue
 		}
 		if !fileExists(manifest.Path(dir)) {
-			slog.Debug("skipping known fleet: fleet.yml not found", "owner", o, "dir", dir)
+			slog.Debug("skipping fleet: fleet.yml not found", "owner", o, "dir", dir)
 			continue
 		}
 		out = append(out, fleetTarget{Owner: o, Dir: dir})
@@ -153,17 +151,22 @@ func expandPath(p string) string {
 	return p
 }
 
-// loadFleetManifest loads the manifest for a target. Errors are tolerated — a
-// fleet directory without a manifest (e.g. created mid-sync) returns nil.
+// loadFleetManifest loads the manifest for a target. Returns nil when the
+// file is absent; logs a warning on parse errors (corrupt YAML).
 func loadFleetManifest(t fleetTarget) *manifest.FleetManifest {
-	mf, _ := manifest.Load(manifest.Path(t.Dir))
+	path := manifest.Path(t.Dir)
+	mf, err := manifest.Load(path)
+	if err != nil && !os.IsNotExist(err) {
+		slog.Warn("loading fleet manifest", "path", path, "error", err)
+		return nil
+	}
 	return mf
 }
 
 // reposForTarget returns the repo tasks for a fleet target. Manifest-first:
 // uses manifest repos when available; falls back to filesystem scan.
-func reposForTarget(t fleetTarget, f Filters) ([]fleet.RepoTask, error) {
-	tasks, err := manifestToTasks(t, f)
+func reposForTarget(ctx context.Context, t fleetTarget, f Filters) ([]fleet.RepoTask, error) {
+	tasks, err := manifestToTasks(ctx, t, f)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +176,7 @@ func reposForTarget(t fleetTarget, f Filters) ([]fleet.RepoTask, error) {
 
 	mf := loadFleetManifest(t)
 
-	scanned, err := fleet.Scan(t.Dir, f.IncludeRegex, mf)
+	scanned, err := fleet.Scan(ctx, t.Dir, f.IncludeRegex, mf)
 	if err != nil {
 		return nil, err
 	}
@@ -182,21 +185,17 @@ func reposForTarget(t fleetTarget, f Filters) ([]fleet.RepoTask, error) {
 	for i, tk := range scanned {
 		tasksWithName[i] = taskWithName{RepoName: tk.RepoName, FullName: tk.FullName, ID: tk.ID, Dir: tk.Dir}
 	}
-	tasksWithName, err = f.ApplyTasks(tasksWithName, mf)
+	tasksWithName, err = f.ApplyTasks(ctx, tasksWithName, mf)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make([]fleet.RepoTask, len(tasksWithName))
-	for i, tn := range tasksWithName {
-		out[i] = fleet.RepoTask{RepoName: tn.RepoName, ID: tn.ID, FullName: tn.FullName, Dir: tn.Dir}
-	}
-	return out, nil
+	return toRepoTasks(tasksWithName), nil
 }
 
 // manifestToTasks converts a fleet manifest's repos into RepoTasks with
 // optional filtering. Returns nil (not error) when the manifest is absent.
-func manifestToTasks(t fleetTarget, f Filters) ([]fleet.RepoTask, error) {
+func manifestToTasks(ctx context.Context, t fleetTarget, f Filters) ([]fleet.RepoTask, error) {
 	mf := loadFleetManifest(t)
 	if mf == nil {
 		return nil, nil
@@ -204,10 +203,7 @@ func manifestToTasks(t fleetTarget, f Filters) ([]fleet.RepoTask, error) {
 
 	tasks := make([]taskWithName, 0, len(mf.Repos))
 	for _, r := range mf.Repos {
-		name := r.FullName
-		if i := strings.LastIndexByte(name, '/'); i >= 0 {
-			name = name[i+1:]
-		}
+		name := fleet.ShortName(r.FullName)
 		tasks = append(tasks, taskWithName{
 			RepoName: name,
 			FullName: r.FullName,
@@ -216,19 +212,42 @@ func manifestToTasks(t fleetTarget, f Filters) ([]fleet.RepoTask, error) {
 		})
 	}
 
-	filtered, err := f.ApplyTasks(tasks, mf)
+	filtered, err := f.ApplyTasks(ctx, tasks, mf)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make([]fleet.RepoTask, 0, len(filtered))
-	for _, tn := range filtered {
-		out = append(out, fleet.RepoTask{
-			RepoName: tn.RepoName,
-			ID:       tn.ID,
-			FullName: tn.FullName,
-			Dir:      tn.Dir,
-		})
+	return toRepoTasks(filtered), nil
+}
+
+func toRepoTasks(tasks []taskWithName) []fleet.RepoTask {
+	out := make([]fleet.RepoTask, len(tasks))
+	for i, t := range tasks {
+		out[i] = fleet.RepoTask{RepoName: t.RepoName, ID: t.ID, FullName: t.FullName, Dir: t.Dir}
 	}
-	return out, nil
+	return out
+}
+
+func fetchReposFromAPI(ctx context.Context, conf *Conf, prov provider.Provider, owner string, f Filters) ([]*provider.Repo, *manifest.FleetManifest, error) {
+	isOrg, err := prov.DetectOwner(ctx, owner)
+	if err != nil {
+		return nil, nil, fmt.Errorf("detect owner: %w", err)
+	}
+
+	repos, err := prov.ListRepos(ctx, owner, provider.ListOptions{
+		Visibility: f.Visibility,
+		IsOrg:      isOrg,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("list repos: %w", err)
+	}
+
+	target, _ := resolveFleet(conf, prov.Host(), owner)
+	mf := loadFleetManifest(target)
+	repos, err = f.Apply(repos, mf)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return repos, mf, nil
 }

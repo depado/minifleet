@@ -19,7 +19,6 @@ type Plan struct {
 	DryRun     bool     `yaml:"dry_run,omitempty"`
 	Summary    bool     `yaml:"summary,omitempty"`
 	Progress   bool     `yaml:"progress,omitempty"`
-	Limit      int      `yaml:"limit,omitempty"`
 	Filters    *Filters `yaml:"filters,omitempty"`
 }
 
@@ -110,7 +109,7 @@ func planTargets(conf *Conf, plan *Plan, all bool) ([]fleetTarget, error) {
 	if plan != nil && plan.Fleet != "" {
 		target, _ := resolveFleet(conf, "", plan.Fleet)
 		if target.Dir == "" {
-			return nil, fmt.Errorf("could not resolve fleet %q in known_fleets; run 'minifleet discover %s' first", plan.Fleet, plan.Fleet)
+			return nil, fmt.Errorf("could not resolve fleet %q in fleets; run 'minifleet discover %s' first", plan.Fleet, plan.Fleet)
 		}
 		return []fleetTarget{target}, nil
 	}

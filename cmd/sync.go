@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -88,7 +87,7 @@ func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner stri
 	target, _ := resolveFleet(conf, prov.Host(), owner)
 
 	if target.Dir == "" {
-		return fmt.Errorf("could not resolve fleet directory for %s (no --fleet.path, current directory, or known_fleets entry)", owner)
+		return fmt.Errorf("could not resolve fleet directory for %s (no --path, current directory, or known_fleets entry)", owner)
 	}
 
 	return syncTarget(ctx, conf, prov, target, collect)
@@ -165,7 +164,7 @@ func setProtocol(idx map[string]*manifest.ManifestRepo, fullName, protocol strin
 
 func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t fleetTarget, mf *manifest.FleetManifest, collect func(*fleet.BulkResult)) error {
 	idx := mf.Index()
-	shallow := conf.Fleet.Shallow
+	shallow := conf.Shallow
 
 	if err := os.MkdirAll(t.Dir, 0o755); err != nil {
 		return fmt.Errorf("create fleet dir: %w", err)
@@ -173,10 +172,7 @@ func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t
 
 	tasks := make([]fleet.RepoTask, 0, len(mf.Repos))
 	for _, r := range mf.Repos {
-		name := r.FullName
-		if i := strings.LastIndexByte(name, '/'); i >= 0 {
-			name = name[i+1:]
-		}
+		name := fleet.ShortName(r.FullName)
 		tasks = append(tasks, fleet.RepoTask{
 			RepoName: name,
 			ID:       r.FullName,
@@ -186,7 +182,7 @@ func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t
 	}
 
 	exec := fleet.NewExecutor(fleet.ExecutorConfig{
-		Concurrency: conf.Fleet.Concurrent,
+		Concurrency: conf.Concurrent,
 		Progress:    conf.UI.Progress && sharedFormat != "json",
 		ProgressConfig: fleet.ProgressConfig{
 			Description: fmt.Sprintf("Syncing %s", t.Owner),
@@ -237,9 +233,11 @@ func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t
 		if err := manifest.Save(mf, manifest.Path(t.Dir)); err != nil {
 			slog.Warn("failed to save manifest after sync", "path", manifest.Path(t.Dir), "error", err)
 		}
-		if err := RegisterFleet(conf, t.Owner, t.Dir); err != nil {
-			if sharedFormat != "json" {
-				ui.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
+		if !mf.NoRegister {
+			if err := RegisterFleet(conf, t.Owner, t.Dir); err != nil {
+				if sharedFormat != "json" {
+					ui.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
+				}
 			}
 		}
 	}

@@ -12,7 +12,7 @@ func TestResolveFleet(t *testing.T) {
 	if err := manifest.Save(mf, manifest.Path(fleetDir)); err != nil {
 		t.Fatal(err)
 	}
-	conf := &Conf{Fleet: FleetConf{KnownFleets: map[string]string{"dauph-in": fleetDir}}}
+	conf := &Conf{Fleets: map[string]string{"dauph-in": fleetDir}}
 
 	t.Run("known fleet wins over current directory without manifest", func(t *testing.T) {
 		t.Chdir(t.TempDir())
@@ -47,6 +47,17 @@ func TestResolveFleet(t *testing.T) {
 			t.Errorf("dir = %q, want %q", target.Dir, fleetDir)
 		}
 	})
+
+	t.Run("path flag overrides known fleets and cwd", func(t *testing.T) {
+		c := &Conf{Path: fleetDir}
+		target, ok := resolveFleet(c, "github.com", "dauph-in")
+		if !ok {
+			t.Fatal("expected manifest to be found")
+		}
+		if target.Dir != fleetDir {
+			t.Errorf("dir = %q, want %q", target.Dir, fleetDir)
+		}
+	})
 }
 
 func TestDiscoverFleets(t *testing.T) {
@@ -58,7 +69,7 @@ func TestDiscoverFleets(t *testing.T) {
 	if err := manifest.Save(&manifest.FleetManifest{Version: "1", Owner: "other"}, manifest.Path(otherDir)); err != nil {
 		t.Fatal(err)
 	}
-	conf := &Conf{Fleet: FleetConf{KnownFleets: map[string]string{"dauph-in": fleetDir, "other": otherDir}}}
+	conf := &Conf{Fleets: map[string]string{"dauph-in": fleetDir, "other": otherDir}}
 
 	t.Run("current directory manifest wins by default", func(t *testing.T) {
 		t.Chdir(fleetDir)
@@ -79,12 +90,15 @@ func TestDiscoverFleets(t *testing.T) {
 		}
 	})
 
-	t.Run("all bypasses fleet.path", func(t *testing.T) {
+	t.Run("path overrides all", func(t *testing.T) {
 		t.Chdir(t.TempDir())
-		c := &Conf{Fleet: FleetConf{Path: fleetDir, KnownFleets: conf.Fleet.KnownFleets}}
+		c := &Conf{Path: fleetDir, Fleets: conf.Fleets}
 		targets := discoverFleets(c, true)
-		if len(targets) != 2 {
-			t.Errorf("len(targets) = %d, want 2", len(targets))
+		if len(targets) != 1 {
+			t.Fatalf("len(targets) = %d, want 1", len(targets))
+		}
+		if targets[0].Dir != fleetDir {
+			t.Errorf("dir = %q, want %q", targets[0].Dir, fleetDir)
 		}
 	})
 }

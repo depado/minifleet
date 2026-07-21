@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -28,6 +29,7 @@ func main() {
 	cmd.SetupCommands(root)
 
 	if err := root.ExecuteContext(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		slog.Error("fatal", "error", err)
 		os.Exit(1)
 	}

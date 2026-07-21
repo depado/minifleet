@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -133,7 +134,7 @@ func TestScan(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "plain"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	tasks, err := Scan(dir, "", nil)
+	tasks, err := Scan(context.Background(), dir, "", nil)
 	if err != nil {
 		t.Fatalf("Scan: %v", err)
 	}

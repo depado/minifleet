@@ -48,7 +48,7 @@ func newPRsCmd() *cobra.Command {
 			}
 
 			target, _ := resolveFleet(conf, prov.Host(), owner)
-			tasks, err := manifestToTasks(target, filters)
+			tasks, err := manifestToTasks(ctx, target, filters)
 			if err != nil {
 				return err
 			}
@@ -83,7 +83,7 @@ func prsAll(ctx context.Context, conf *Conf, f Filters, plan *Plan, state, autho
 		return err
 	}
 	for _, t := range targets {
-		tasks, err := manifestToTasks(t, f)
+		tasks, err := manifestToTasks(ctx, t, f)
 		if err != nil {
 			return err
 		}
@@ -98,22 +98,7 @@ func prsAll(ctx context.Context, conf *Conf, f Filters, plan *Plan, state, autho
 }
 
 func prsFromAPI(ctx context.Context, conf *Conf, prov provider.Provider, owner string, f Filters, state, author string, noDraft bool) error {
-	isOrg, err := prov.DetectOwner(ctx, owner)
-	if err != nil {
-		return fmt.Errorf("detect owner: %w", err)
-	}
-
-	repos, err := prov.ListRepos(ctx, owner, provider.ListOptions{
-		Visibility: f.Visibility,
-		IsOrg:      isOrg,
-	})
-	if err != nil {
-		return fmt.Errorf("list repos: %w", err)
-	}
-
-	target, _ := resolveFleet(conf, prov.Host(), owner)
-	mf := loadFleetManifest(target)
-	repos, err = f.Apply(repos, mf)
+	repos, _, err := fetchReposFromAPI(ctx, conf, prov, owner, f)
 	if err != nil {
 		return err
 	}
@@ -132,7 +117,7 @@ func prsFromAPI(ctx context.Context, conf *Conf, prov provider.Provider, owner s
 
 func execPRs(ctx context.Context, conf *Conf, prov provider.Provider, owner string, tasks []fleet.RepoTask, state, author string, noDraft bool) error {
 	exec := fleet.NewExecutor(fleet.ExecutorConfig{
-		Concurrency: conf.Fleet.Concurrent,
+		Concurrency: conf.Concurrent,
 		Progress:    conf.UI.Progress && sharedFormat != "json",
 		ProgressConfig: fleet.ProgressConfig{
 			Description: "Fetching pull requests",

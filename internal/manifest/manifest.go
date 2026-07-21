@@ -13,10 +13,11 @@ import (
 // The directory containing the file IS the fleet directory; repos are cloned
 // directly into it, so no per-repo path is tracked.
 type FleetManifest struct {
-	Version string              `yaml:"version"`
-	Owner   string              `yaml:"owner"`
-	Groups  map[string][]string `yaml:"groups,omitempty"`
-	Repos   []ManifestRepo      `yaml:"repos"`
+	Version    string              `yaml:"version"`
+	Owner      string              `yaml:"owner"`
+	NoRegister bool                `yaml:"no_register,omitempty"`
+	Groups     map[string][]string `yaml:"groups,omitempty"`
+	Repos      []ManifestRepo      `yaml:"repos"`
 }
 
 type ManifestRepo struct {

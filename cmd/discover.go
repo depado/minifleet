@@ -14,7 +14,10 @@ import (
 )
 
 func newDiscoverCmd() *cobra.Command {
-	var filters Filters
+	var (
+		filters    Filters
+		noRegister bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "discover <owner>",
@@ -37,21 +40,22 @@ func newDiscoverCmd() *cobra.Command {
 				return err
 			}
 
-			return discoverOne(ctx, conf, prov, owner, filters)
+			return discoverOne(ctx, conf, prov, owner, filters, noRegister)
 		},
 	}
 
 	addFilterFlags(cmd, &filters)
+	cmd.Flags().BoolVar(&noRegister, "no-register", false, "do not register this fleet in config (fleets)")
 
 	return cmd
 }
 
-func discoverOne(ctx context.Context, conf *Conf, prov provider.Provider, owner string, f Filters) error {
+func discoverOne(ctx context.Context, conf *Conf, prov provider.Provider, owner string, f Filters, noRegister bool) error {
 	host := prov.Host()
 	target, _ := resolveFleet(conf, host, owner)
 
 	if target.Dir == "" {
-		return fmt.Errorf("could not resolve fleet directory for %s (no --fleet.path, current directory, or known_fleets entry)", owner)
+		return fmt.Errorf("could not resolve fleet directory for %s (no --path, current directory, or known_fleets entry)", owner)
 	}
 
 	isOrg, err := prov.DetectOwner(ctx, owner)
@@ -79,6 +83,7 @@ func discoverOne(ctx context.Context, conf *Conf, prov provider.Provider, owner 
 	}
 
 	mf = manifest.Merge(mf, owner, repos)
+	mf.NoRegister = noRegister
 
 	if err := os.MkdirAll(target.Dir, 0o755); err != nil {
 		return fmt.Errorf("create fleet dir: %w", err)
@@ -86,8 +91,10 @@ func discoverOne(ctx context.Context, conf *Conf, prov provider.Provider, owner 
 	if err := manifest.Save(mf, manifest.Path(target.Dir)); err != nil {
 		return fmt.Errorf("save manifest: %w", err)
 	}
-	if err := RegisterFleet(conf, owner, target.Dir); err != nil {
-		ui.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
+	if !noRegister {
+		if err := RegisterFleet(conf, owner, target.Dir); err != nil {
+			ui.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
+		}
 	}
 
 	ui.PrintInfo(fmt.Sprintf("Discovered %d repositories for %s in %s", len(repos), owner, target.Dir))

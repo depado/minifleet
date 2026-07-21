@@ -24,9 +24,9 @@ func addGitHubFlags(c *cobra.Command) {
 }
 
 func addFleetFlags(c *cobra.Command) {
-	c.PersistentFlags().String("fleet.path", "", "override clone directory, bypass host/owner nesting")
-	c.PersistentFlags().Bool("fleet.shallow", false, "use shallow clones (--depth 1 --filter=blob:none)")
-	c.PersistentFlags().Int("fleet.concurrent", 5, "maximum concurrent operations")
+	c.PersistentFlags().String("path", "", "use this directory as the fleet target, bypassing known_fleets lookup")
+	c.PersistentFlags().Bool("shallow", false, "use shallow clones (--depth 1 --filter=blob:none)")
+	c.PersistentFlags().Int("concurrent", 0, "maximum concurrent operations (defaults to number of CPUs)")
 }
 
 func addUIFlags(c *cobra.Command) {
@@ -35,11 +35,11 @@ func addUIFlags(c *cobra.Command) {
 }
 
 func addFormatFlag(c *cobra.Command) {
-	c.PersistentFlags().StringVarP(&sharedFormat, "format", "f", "table", "output format (table, json, yaml)")
+	c.PersistentFlags().StringVarP(&sharedFormat, "format", "f", "table", "output format (table, json)")
 }
 
 func addAllFlag(c *cobra.Command) {
-	c.PersistentFlags().BoolVarP(&sharedAll, "all", "A", false, "operate on all known fleets, ignoring the current directory")
+	c.PersistentFlags().BoolVarP(&sharedAll, "all", "A", false, "operate on all known fleets, ignoring the current directory (--path takes precedence)")
 }
 
 func addPlanFlag(c *cobra.Command) {

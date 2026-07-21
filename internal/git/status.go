@@ -14,6 +14,7 @@ type RepoStatus struct {
 	Dirty      bool
 	Untracked  int
 	StashCount int
+	OffDefault bool
 }
 
 func Status(ctx context.Context, dir string) (*RepoStatus, error) {
@@ -23,6 +24,14 @@ func Status(ctx context.Context, dir string) (*RepoStatus, error) {
 	}
 
 	remote, _ := run(ctx, dir, "remote", "get-url", "origin")
+
+	offDefault := false
+	if def, err := run(ctx, dir, "symbolic-ref", "refs/remotes/origin/HEAD", "--short"); err == nil && def != "" {
+		name, _ := strings.CutPrefix(def, "origin/")
+		if name != branch {
+			offDefault = true
+		}
+	}
 
 	dirty, untracked := checkDirty(ctx, dir)
 	behind, ahead := CountAheadBehind(ctx, dir)
@@ -37,6 +46,7 @@ func Status(ctx context.Context, dir string) (*RepoStatus, error) {
 		Dirty:      dirty,
 		Untracked:  untracked,
 		StashCount: stashCount,
+		OffDefault: offDefault,
 	}, nil
 }
 
@@ -45,6 +55,18 @@ func Status(ctx context.Context, dir string) (*RepoStatus, error) {
 func IsDirty(ctx context.Context, dir string) bool {
 	dirty, _ := checkDirty(ctx, dir)
 	return dirty
+}
+
+// IsOffDefault reports whether the current branch differs from the remote's
+// default branch. Returns false when refs/remotes/origin/HEAD is not set.
+func IsOffDefault(ctx context.Context, dir string) bool {
+	def, err := run(ctx, dir, "symbolic-ref", "refs/remotes/origin/HEAD", "--short")
+	if err != nil || def == "" {
+		return false
+	}
+	name, _ := strings.CutPrefix(def, "origin/")
+	branch, err := run(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
+	return err == nil && name != branch
 }
 
 // CountAheadBehind returns the number of commits the repo is behind/ahead of its

@@ -190,7 +190,7 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 						case StatusFailed:
 							desc = fmt.Sprintf("[red]%s[/]", task.RepoName)
 						}
-						p.Update(slotID, progress.TaskUpdateConfig{Description: new(desc)})
+						p.Update(slotID, progress.TaskUpdateConfig{Description: &desc})
 						if len(taskCh) > 0 {
 							time.Sleep(300 * time.Millisecond)
 						}
@@ -229,10 +229,13 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 }
 
 func isSkipError(err error) bool {
-	_, ok := err.(*SkipError)
-	if ok {
+	if _, ok := err.(*SkipError); ok {
 		return true
 	}
-	_, ok = err.(*git.SkipError)
-	return ok
+	// git.SkipError mirrors SkipError so the git package can signal
+	// "skip this repo" without importing fleet (would be a cycle).
+	if _, ok := err.(*git.SkipError); ok {
+		return true
+	}
+	return false
 }

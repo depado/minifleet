@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -27,23 +28,19 @@ type GitHubConf struct {
 	Host  string `mapstructure:"host"` // "github.com" (default) or a GitHub Enterprise host
 }
 
-type FleetConf struct {
-	Path        string            `mapstructure:"path"` // one-shot override: clone into this directory
-	Shallow     bool              `mapstructure:"shallow"`
-	Concurrent  int               `mapstructure:"concurrent"`
-	KnownFleets map[string]string `mapstructure:"known_fleets,omitempty"` // owner → fleet directory
+type Conf struct {
+	Path       string            `mapstructure:"path"`       // use this directory as the fleet target, bypassing fleets
+	Shallow    bool              `mapstructure:"shallow"`    // use shallow clones
+	Concurrent int               `mapstructure:"concurrent"` // max concurrent operations
+	Fleets     map[string]string `mapstructure:"fleets"`     // owner → fleet directory
+	Log        LogConf           `mapstructure:"log"`
+	GitHub     GitHubConf        `mapstructure:"github"`
+	UI         UIConf            `mapstructure:"ui"`
 }
 
 type UIConf struct {
 	Progress bool `mapstructure:"progress"`
 	Color    bool `mapstructure:"color"`
-}
-
-type Conf struct {
-	Log    LogConf    `mapstructure:"log"`
-	GitHub GitHubConf `mapstructure:"github"`
-	Fleet  FleetConf  `mapstructure:"fleet"`
-	UI     UIConf     `mapstructure:"ui"`
 }
 
 func configDir() string {
@@ -128,8 +125,8 @@ func NewConf(cmd *cobra.Command) (*Conf, error) {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 
-	if conf.Fleet.Concurrent <= 0 {
-		conf.Fleet.Concurrent = 5
+	if conf.Concurrent <= 0 {
+		conf.Concurrent = runtime.NumCPU()
 	}
 
 	return conf, nil

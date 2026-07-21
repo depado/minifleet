@@ -77,7 +77,7 @@ func newStatusCmd() *cobra.Command {
 }
 
 func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters, format string) ([]statusRow, error) {
-	tasks, err := reposForTarget(t, f)
+	tasks, err := reposForTarget(ctx, t, f)
 	if err != nil {
 		return nil, fmt.Errorf("scan %s: %w", t.Dir, err)
 	}
@@ -87,7 +87,7 @@ func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters
 	}
 
 	exec := fleet.NewExecutor(fleet.ExecutorConfig{
-		Concurrency: conf.Fleet.Concurrent,
+		Concurrency: conf.Concurrent,
 		Progress:    false,
 	})
 
@@ -115,7 +115,7 @@ func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters
 func renderStatusTable(title string, rows []statusRow) {
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Repo < rows[j].Repo })
 
-	tbl := ui.NewTitledTable(title, "Repo", "Remote", "Branch", "Behind", "Ahead", "Dirty", "Untracked", "Stash")
+	tbl := ui.NewTitledTable(title, "Repo", "Behind", "Ahead", "Dirty", "Untracked", "Stash", "Branch", "Remote")
 	for _, r := range rows {
 		remote := "?"
 		branch := "?"
@@ -129,7 +129,11 @@ func renderStatusTable(title string, rows []statusRow) {
 			dirty = "[red]error[/]"
 		} else if r.Status != nil {
 			remote = r.Status.Remote
-			branch = r.Status.Branch
+			if r.Status.OffDefault {
+				branch = fmt.Sprintf("[yellow]%s[/]", r.Status.Branch)
+			} else {
+				branch = r.Status.Branch
+			}
 			behind = countStr(r.Status.Behind)
 			ahead = countStr(r.Status.Ahead)
 			if r.Status.Dirty {
@@ -143,13 +147,13 @@ func renderStatusTable(title string, rows []statusRow) {
 
 		tbl.AddRow(
 			fmt.Sprintf("[bold]%s[/]", r.Repo),
-			remote,
-			branch,
 			behind,
 			ahead,
 			dirty,
 			untracked,
 			stash,
+			branch,
+			remote,
 		)
 	}
 	ui.DefaultConsole.Render(tbl)

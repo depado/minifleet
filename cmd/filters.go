@@ -143,7 +143,7 @@ func (f Filters) Apply(repos []*provider.Repo, mf *manifest.FleetManifest) ([]*p
 // ApplyTasks filters fleet.RepoTask-style entries (from the local scanner).
 // Only name and manifest-based filters apply since task entries may not
 // carry API metadata.
-func (f Filters) ApplyTasks(tasks []taskWithName, mf *manifest.FleetManifest) ([]taskWithName, error) {
+func (f Filters) ApplyTasks(ctx context.Context, tasks []taskWithName, mf *manifest.FleetManifest) ([]taskWithName, error) {
 	nm, err := f.nameMatcher()
 	if err != nil {
 		return nil, err
@@ -201,20 +201,20 @@ func (f Filters) ApplyTasks(tasks []taskWithName, mf *manifest.FleetManifest) ([
 		out = append(out, t)
 	}
 	if f.IfCmd != "" {
-		out = parallelFilter(out, f.runIf)
+		out = parallelFilter(out, func(dir string) bool { return f.runIf(ctx, dir) })
 	}
 	if f.Dirty {
 		out = parallelFilter(out, func(dir string) bool {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			c, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-			return git.IsDirty(ctx, dir)
+			return git.IsDirty(c, dir)
 		})
 	}
 	if f.Ahead > 0 || f.Behind > 0 {
 		out = parallelFilter(out, func(dir string) bool {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			c, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-			b, a := git.CountAheadBehind(ctx, dir)
+			b, a := git.CountAheadBehind(c, dir)
 			if f.Ahead > 0 && a < f.Ahead {
 				return false
 			}
@@ -226,12 +226,15 @@ func (f Filters) ApplyTasks(tasks []taskWithName, mf *manifest.FleetManifest) ([
 	}
 	if f.Wip {
 		out = parallelFilter(out, func(dir string) bool {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			c, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-			if git.IsDirty(ctx, dir) {
+			if git.IsDirty(c, dir) {
 				return true
 			}
-			b, a := git.CountAheadBehind(ctx, dir)
+			if git.IsOffDefault(c, dir) {
+				return true
+			}
+			b, a := git.CountAheadBehind(c, dir)
 			return a > 0 || b > 0
 		})
 	}
@@ -366,13 +369,13 @@ func (f Filters) hasFiles(dir string) bool {
 	return true
 }
 
-func (f Filters) runIf(dir string) bool {
+func (f Filters) runIf(ctx context.Context, dir string) bool {
 	if f.IfCmd == "" {
 		return true
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	c, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", f.IfCmd)
+	cmd := exec.CommandContext(c, "sh", "-c", f.IfCmd)
 	cmd.Dir = dir
 	return cmd.Run() == nil
 }

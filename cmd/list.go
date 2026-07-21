@@ -25,7 +25,7 @@ func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [owner]",
 		Short: "List repositories from the manifest, or from GitHub if no manifest exists",
-		Long:  "Without an owner, lists repositories from the fleet in the current directory (or all known fleets).\nWith an owner, uses the local manifest; falls back to fetching from the API if no manifest exists.\nUse --all to always list every known fleet, ignoring the current directory.",
+		Long:  "Without an owner, lists repositories from the fleet in the current directory (or all known fleets).\nWith an owner, uses the local manifest; falls back to fetching from the API if no manifest exists.\nUse --all to always list all known fleets, ignoring the current directory.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			conf, err := confFromCtx(cmd)
@@ -47,12 +47,12 @@ func newListCmd() *cobra.Command {
 				return err
 			}
 			target, _ := resolveFleet(conf, prov.Host(), owner)
-			tasks, err := manifestToTasks(target, filters)
+			tasks, err := manifestToTasks(ctx, target, filters)
 			if err != nil {
 				return err
 			}
 			if len(tasks) == 0 {
-				return listFromAPI(ctx, conf, owner, filters, limit)
+				return listFromAPI(ctx, conf, prov, owner, filters, limit)
 			}
 
 			mf := loadFleetManifest(target)
@@ -61,7 +61,7 @@ func newListCmd() *cobra.Command {
 	}
 
 	addFilterFlags(cmd, &filters)
-	cmd.Flags().IntVar(&limit, "limit", 1000, "max repos to list")
+	cmd.Flags().IntVar(&limit, "limit", 0, "max repos to list (0 = unlimited)")
 
 	return cmd
 }
@@ -77,7 +77,7 @@ func listAll(ctx context.Context, conf *Conf, f Filters, plan *Plan) error {
 	}
 
 	for _, t := range targets {
-		tasks, err := manifestToTasks(t, f)
+		tasks, err := manifestToTasks(ctx, t, f)
 		if err != nil {
 			return err
 		}
@@ -89,28 +89,8 @@ func listAll(ctx context.Context, conf *Conf, f Filters, plan *Plan) error {
 	return nil
 }
 
-func listFromAPI(ctx context.Context, conf *Conf, owner string, f Filters, limit int) error {
-	prov, err := github.New(conf.GitHub.Token, conf.GitHub.Host)
-	if err != nil {
-		return err
-	}
-
-	isOrg, err := prov.DetectOwner(ctx, owner)
-	if err != nil {
-		return fmt.Errorf("detect owner: %w", err)
-	}
-
-	repos, err := prov.ListRepos(ctx, owner, provider.ListOptions{
-		Visibility: f.Visibility,
-		IsOrg:      isOrg,
-	})
-	if err != nil {
-		return fmt.Errorf("list repos: %w", err)
-	}
-
-	target, _ := resolveFleet(conf, prov.Host(), owner)
-	mf := loadFleetManifest(target)
-	repos, err = f.Apply(repos, mf)
+func listFromAPI(ctx context.Context, conf *Conf, prov provider.Provider, owner string, f Filters, limit int) error {
+	repos, _, err := fetchReposFromAPI(ctx, conf, prov, owner, f)
 	if err != nil {
 		return err
 	}
