@@ -34,7 +34,7 @@ func printResultLine(glyphFmt, repoName string, err error) {
 	msg := err.Error()
 	if strings.Contains(msg, "\n") {
 		gorich.Printf(glyphFmt+"\n", repoName)
-		for _, line := range strings.Split(msg, "\n") {
+		for line := range strings.SplitSeq(msg, "\n") {
 			if line != "" {
 				gorich.Printf("  [dim]%s[/]\n", line)
 			}
