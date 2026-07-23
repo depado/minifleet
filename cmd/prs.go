@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"os"
 	"sort"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -74,7 +77,7 @@ func prsAll(ctx context.Context, conf *Conf, f Filters, plan *Plan, state, autho
 		return err
 	}
 	if len(targets) == 0 {
-		ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
+		conf.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 		return nil
 	}
 
@@ -82,6 +85,28 @@ func prsAll(ctx context.Context, conf *Conf, f Filters, plan *Plan, state, autho
 	if err != nil {
 		return err
 	}
+
+	if sharedJSON {
+		out := make(map[string][]prRow)
+		for _, t := range targets {
+			tasks, err := manifestToTasks(ctx, t, f)
+			if err != nil {
+				return err
+			}
+			if len(tasks) == 0 {
+				continue
+			}
+			rows, err := execPRsRows(ctx, conf, prov, t.Owner, tasks, state, author, noDraft)
+			if err != nil {
+				return err
+			}
+			out[t.Owner] = rows
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+
 	for _, t := range targets {
 		tasks, err := manifestToTasks(ctx, t, f)
 		if err != nil {
@@ -118,7 +143,67 @@ func prsFromAPI(ctx context.Context, conf *Conf, prov provider.Provider, owner s
 func execPRs(ctx context.Context, conf *Conf, prov provider.Provider, owner string, tasks []fleet.RepoTask, state, author string, noDraft bool) error {
 	exec := fleet.NewExecutor(fleet.ExecutorConfig{
 		Concurrency: conf.Concurrent,
-		Progress:    conf.UI.Progress && sharedFormat != "json",
+		Interactive: conf.Console.IsTerminal(),
+		ProgressConfig: fleet.ProgressConfig{
+			Description: "Fetching pull requests",
+		},
+	})
+
+	if !conf.Console.IsTerminal() {
+		slog.Info("listing prs", "owner", owner, "repos", len(tasks))
+	}
+
+	result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
+		prs, err := prov.ListPullRequests(ctx, owner, task.RepoName, provider.ListPROptions{
+			State: state,
+			Sort:  "updated",
+			Limit: 0,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if author != "" {
+			filtered := prs[:0]
+			for _, pr := range prs {
+				if pr.Author == author {
+					filtered = append(filtered, pr)
+				}
+			}
+			prs = filtered
+		}
+
+		if noDraft {
+			filtered := prs[:0]
+			for _, pr := range prs {
+				if !pr.Draft {
+					filtered = append(filtered, pr)
+				}
+			}
+			prs = filtered
+		}
+
+		if len(prs) == 0 {
+			return nil, &fleet.SkipError{Reason: "no matching PRs"}
+		}
+
+		return prs, nil
+	})
+
+	if !conf.Console.IsTerminal() {
+		slog.Info("listed prs", "owner", owner, "repos", len(tasks), "elapsed", result.Elapsed.Round(time.Millisecond))
+	}
+
+	if sharedJSON {
+		return outputPRsJSON(result, owner)
+	}
+	return outputPRsTable(result, conf)
+}
+
+func execPRsRows(ctx context.Context, conf *Conf, prov provider.Provider, owner string, tasks []fleet.RepoTask, state, author string, noDraft bool) ([]prRow, error) {
+	exec := fleet.NewExecutor(fleet.ExecutorConfig{
+		Concurrency: conf.Concurrent,
+		Interactive: conf.Console.IsTerminal(),
 		ProgressConfig: fleet.ProgressConfig{
 			Description: "Fetching pull requests",
 		},
@@ -161,12 +246,23 @@ func execPRs(ctx context.Context, conf *Conf, prov provider.Provider, owner stri
 		return prs, nil
 	})
 
-	switch sharedFormat {
-	case "json":
-		return outputPRsJSON(result)
-	default:
-		return outputPRsTable(result)
+	return prRowsFromResult(result), nil
+}
+
+func prRowsFromResult(result *fleet.BulkResult) []prRow {
+	out := make([]prRow, 0)
+	for i := range result.Results {
+		r := &result.Results[i]
+		if r.Status == fleet.StatusFailed {
+			continue
+		}
+		if prs, ok := r.Payload.([]*provider.PullRequest); ok {
+			for _, pr := range prs {
+				out = append(out, prRow{Repo: r.Task.RepoName, PR: pr})
+			}
+		}
 	}
+	return out
 }
 
 type prRow struct {
@@ -174,7 +270,7 @@ type prRow struct {
 	PR   *provider.PullRequest `json:"pr"`
 }
 
-func outputPRsTable(result *fleet.BulkResult) error {
+func outputPRsTable(result *fleet.BulkResult, conf *Conf) error {
 	tbl := ui.NewTable("Repo", "Pull Request", "Author", "CI", "Review")
 	totalPRs := 0
 	reposWithPRs := 0
@@ -211,30 +307,15 @@ func outputPRsTable(result *fleet.BulkResult) error {
 		}
 	}
 
-	ui.DefaultConsole.Render(tbl)
-	ui.PrintDim(fmt.Sprintf("%d open PRs across %d repos", totalPRs, reposWithPRs))
+	conf.Console.Render(tbl)
+	conf.PrintDim(fmt.Sprintf("%d open PRs across %d repos", totalPRs, reposWithPRs))
 	return nil
 }
 
-func outputPRsJSON(result *fleet.BulkResult) error {
-	out := make([]prRow, 0)
-	for i := range result.Results {
-		r := &result.Results[i]
-		if r.Status == fleet.StatusFailed {
-			continue
-		}
-		if prs, ok := r.Payload.([]*provider.PullRequest); ok {
-			for _, pr := range prs {
-				out = append(out, prRow{Repo: r.Task.RepoName, PR: pr})
-			}
-		}
-	}
-	data, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Print(string(data))
-	return nil
+func outputPRsJSON(result *fleet.BulkResult, owner string) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(map[string][]prRow{owner: prRowsFromResult(result)})
 }
 
 func ciDisplay(s provider.CIStatus) string {

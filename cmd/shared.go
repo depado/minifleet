@@ -7,16 +7,20 @@ import (
 
 	"github.com/depado/gorich"
 	"github.com/depado/minifleet/internal/fleet"
-	"github.com/depado/minifleet/internal/ui"
 )
 
-func printBulkSummary(result *fleet.BulkResult, dryRun bool) {
-	prefix := ""
-	if dryRun {
-		prefix = "[yellow]would have[/] "
+func printBulkSummary(result *fleet.BulkResult, dryRun bool, conf *Conf) {
+	if !conf.Console.IsTerminal() {
+		return
 	}
-	ui.PrintInfo(fmt.Sprintf("%sCompleted: %d succeeded, %d skipped, %d failed in %s",
-		prefix, result.Succeeded, result.Skipped, result.Failed, result.Elapsed.Round(time.Millisecond)))
+
+	summary := fmt.Sprintf("Completed: %d succeeded, %d skipped, %d failed in %s",
+		result.Succeeded, result.Skipped, result.Failed, result.Elapsed.Round(time.Millisecond))
+	if dryRun {
+		gorich.Println("[yellow]would have[/] " + summary)
+		return
+	}
+	conf.PrintInfo(summary)
 
 	for _, r := range result.Results {
 		switch r.Status {

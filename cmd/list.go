@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/depado/minifleet/internal/fleet"
 	"github.com/depado/minifleet/internal/manifest"
@@ -56,7 +56,14 @@ func newListCmd() *cobra.Command {
 			}
 
 			mf := loadFleetManifest(target)
-			return outputManifestTable(tasks, mf, sharedFormat, fleetTitle(target))
+			repos := manifestRepos(tasks, mf)
+			if sharedJSON {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(map[string][]listRepo{target.Owner: repos})
+			}
+			renderManifestTable(repos, fleetTitle(target), conf)
+			return nil
 		},
 	}
 
@@ -72,8 +79,23 @@ func listAll(ctx context.Context, conf *Conf, f Filters, plan *Plan) error {
 		return err
 	}
 	if len(targets) == 0 {
-		ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
+		conf.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 		return nil
+	}
+
+	if sharedJSON {
+		out := make(map[string][]listRepo)
+		for _, t := range targets {
+			tasks, err := manifestToTasks(ctx, t, f)
+			if err != nil {
+				return err
+			}
+			mf := loadFleetManifest(t)
+			out[t.Owner] = manifestRepos(tasks, mf)
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
 	}
 
 	for _, t := range targets {
@@ -82,9 +104,8 @@ func listAll(ctx context.Context, conf *Conf, f Filters, plan *Plan) error {
 			return err
 		}
 		mf := loadFleetManifest(t)
-		if err := outputManifestTable(tasks, mf, sharedFormat, fleetTitle(t)); err != nil {
-			return err
-		}
+		repos := manifestRepos(tasks, mf)
+		renderManifestTable(repos, fleetTitle(t), conf)
 	}
 	return nil
 }
@@ -99,126 +120,69 @@ func listFromAPI(ctx context.Context, conf *Conf, prov provider.Provider, owner 
 		repos = repos[:limit]
 	}
 
-	switch sharedFormat {
-	case "json":
-		return outputJSON(repos)
-	case "yaml":
-		mf := manifest.Generate(repos, owner)
-		data, err := yaml.Marshal(mf)
-		if err != nil {
-			return err
-		}
-		fmt.Print(string(data))
-		return nil
-	default:
-		return outputTable(repos)
+	if sharedJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(repos)
 	}
-}
-
-func outputManifestTable(tasks []fleet.RepoTask, mf *manifest.FleetManifest, format, title string) error {
-	idx := mf.Index()
-
-	if format == "json" {
-		type jr struct {
-			Name     string   `json:"name"`
-			FullName string   `json:"full_name,omitempty"`
-			Language string   `json:"language,omitempty"`
-			Topics   []string `json:"topics,omitempty"`
-			Archived bool     `json:"archived"`
-			Fork     bool     `json:"fork"`
-			Updated  string   `json:"updated,omitempty"`
-		}
-		out := make([]jr, 0, len(tasks))
-		for _, t := range tasks {
-			mr := idx[t.FullName]
-			row := jr{Name: t.RepoName, FullName: t.FullName}
-			if mr != nil {
-				row.Language = mr.Language
-				row.Topics = mr.Topics
-				row.Archived = mr.Archived
-				row.Fork = mr.Fork
-				if !mr.UpdatedAt.IsZero() {
-					row.Updated = mr.UpdatedAt.Format("2006-01-02")
-				}
-			}
-			out = append(out, row)
-		}
-		data, err := json.MarshalIndent(out, "", "  ")
-		if err != nil {
-			return err
-		}
-		fmt.Print(string(data))
-		return nil
-	}
-
-	if format == "yaml" {
-		type yr struct {
-			Name     string   `yaml:"name"`
-			FullName string   `yaml:"full_name,omitempty"`
-			Language string   `yaml:"language,omitempty"`
-			Topics   []string `yaml:"topics,omitempty"`
-			Archived bool     `yaml:"archived"`
-			Fork     bool     `yaml:"fork"`
-			Updated  string   `yaml:"updated,omitempty"`
-		}
-		out := make([]yr, 0, len(tasks))
-		for _, t := range tasks {
-			mr := idx[t.FullName]
-			row := yr{Name: t.RepoName, FullName: t.FullName}
-			if mr != nil {
-				row.Language = mr.Language
-				row.Topics = mr.Topics
-				row.Archived = mr.Archived
-				row.Fork = mr.Fork
-				if !mr.UpdatedAt.IsZero() {
-					row.Updated = mr.UpdatedAt.Format("2006-01-02")
-				}
-			}
-			out = append(out, row)
-		}
-		data, err := yaml.Marshal(out)
-		if err != nil {
-			return err
-		}
-		fmt.Print(string(data))
-		return nil
-	}
-
-	tbl := ui.NewTitledTable(title, "Name", "Language", "Updated", "Archived", "Fork", "Topics")
-	for _, t := range tasks {
-		mr := idx[t.FullName]
-		archived := "[dim]no[/]"
-		fork := "[dim]no[/]"
-		language := ""
-		updated := ""
-		topics := ""
-		if mr != nil {
-			if mr.Archived {
-				archived = "[red]yes[/]"
-			}
-			if mr.Fork {
-				fork = "[yellow]yes[/]"
-			}
-			language = mr.Language
-			if !mr.UpdatedAt.IsZero() {
-				updated = mr.UpdatedAt.Format("2006-01-02")
-			}
-			topics = strings.Join(mr.Topics, ", ")
-		}
-		tbl.AddRow(
-			fmt.Sprintf("[bold]%s[/]", t.RepoName),
-			language,
-			updated,
-			archived,
-			fork,
-			topics,
-		)
-	}
-	ui.DefaultConsole.Render(tbl)
+	renderAPITable(repos, conf)
 	return nil
 }
 
-func outputTable(repos []*provider.Repo) error {
+type listRepo struct {
+	Name     string   `json:"name"`
+	FullName string   `json:"full_name,omitempty"`
+	Language string   `json:"language,omitempty"`
+	Topics   []string `json:"topics,omitempty"`
+	Archived bool     `json:"archived"`
+	Fork     bool     `json:"fork"`
+	Updated  string   `json:"updated,omitempty"`
+}
+
+func manifestRepos(tasks []fleet.RepoTask, mf *manifest.FleetManifest) []listRepo {
+	idx := mf.Index()
+	out := make([]listRepo, 0, len(tasks))
+	for _, t := range tasks {
+		mr := idx[t.FullName]
+		row := listRepo{Name: t.RepoName, FullName: t.FullName}
+		if mr != nil {
+			row.Language = mr.Language
+			row.Topics = mr.Topics
+			row.Archived = mr.Archived
+			row.Fork = mr.Fork
+			if !mr.UpdatedAt.IsZero() {
+				row.Updated = mr.UpdatedAt.Format("2006-01-02")
+			}
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func renderManifestTable(repos []listRepo, title string, conf *Conf) {
+	tbl := ui.NewTitledTable(title, "Name", "Language", "Updated", "Archived", "Fork", "Topics")
+	for _, r := range repos {
+		archived := "[dim]no[/]"
+		fork := "[dim]no[/]"
+		if r.Archived {
+			archived = "[red]yes[/]"
+		}
+		if r.Fork {
+			fork = "[yellow]yes[/]"
+		}
+		tbl.AddRow(
+			fmt.Sprintf("[bold]%s[/]", r.Name),
+			r.Language,
+			r.Updated,
+			archived,
+			fork,
+			strings.Join(r.Topics, ", "),
+		)
+	}
+	conf.Console.Render(tbl)
+}
+
+func renderAPITable(repos []*provider.Repo, conf *Conf) {
 	tbl := ui.NewTable("Name", "Vis.", "Language", "Updated", "Archived", "Fork", "Topics")
 	for _, r := range repos {
 		archived := "[dim]no[/]"
@@ -239,15 +203,5 @@ func outputTable(repos []*provider.Repo) error {
 			strings.Join(r.Topics, ", "),
 		)
 	}
-	ui.DefaultConsole.Render(tbl)
-	return nil
-}
-
-func outputJSON(repos []*provider.Repo) error {
-	data, err := json.MarshalIndent(repos, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Print(string(data))
-	return nil
+	conf.Console.Render(tbl)
 }

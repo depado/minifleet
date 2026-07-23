@@ -35,6 +35,17 @@ const (
 	StatusFailed
 )
 
+func (s ResultStatus) String() string {
+	switch s {
+	case StatusSkipped:
+		return "skipped"
+	case StatusFailed:
+		return "failed"
+	default:
+		return "ok"
+	}
+}
+
 type BulkResult struct {
 	Total     int
 	Succeeded int
@@ -46,7 +57,7 @@ type BulkResult struct {
 
 type ExecutorConfig struct {
 	Concurrency    int
-	Progress       bool
+	Interactive    bool
 	ProgressConfig ProgressConfig
 }
 
@@ -89,7 +100,7 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 	var overallID *progress.TaskID
 	var slotSection *progress.Section
 
-	if e.cfg.Progress && e.cfg.ProgressConfig.Description != "" {
+	if e.cfg.Interactive && e.cfg.ProgressConfig.Description != "" {
 		p = progress.New(
 			progress.WithColumns(
 				progress.NewSpinnerColumn(
@@ -164,6 +175,9 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 					}
 
 					taskStart := time.Now()
+					if !e.cfg.Interactive {
+						slog.Debug("processing", "repo", task.RepoName, "id", task.ID)
+					}
 					payload, err := op(ctx, task)
 					dur := time.Since(taskStart)
 
@@ -178,6 +192,14 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 						}
 					} else {
 						succeeded.Add(1)
+					}
+
+					attrs := []any{"repo", task.RepoName, "id", task.ID, "status", status.String(), "duration", dur}
+					if err != nil {
+						attrs = append(attrs, "error", err)
+					}
+					if !e.cfg.Interactive {
+						slog.Debug("processed", attrs...)
 					}
 
 					if p != nil {
@@ -225,6 +247,13 @@ func (e *Executor) Run(ctx context.Context, tasks []RepoTask, op Operation) *Bul
 	result.Skipped = int(skipped.Load())
 	result.Failed = int(failed.Load())
 	result.Elapsed = time.Since(start)
+	slog.Debug("executor finished",
+		"tasks", len(tasks),
+		"succeeded", result.Succeeded,
+		"skipped", result.Skipped,
+		"failed", result.Failed,
+		"elapsed", result.Elapsed.Round(time.Millisecond),
+	)
 	return result
 }
 

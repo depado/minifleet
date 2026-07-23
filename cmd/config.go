@@ -15,18 +15,15 @@ type configFile struct {
 		Token string `yaml:"token,omitempty"`
 		Host  string `yaml:"host,omitempty"`
 	} `yaml:"github"`
-	Concurrent int               `yaml:"concurrent"`
-	Fleets     map[string]string `yaml:"fleets,omitempty"`
-	Log        struct {
+	Concurrent  int               `yaml:"concurrent"`
+	Interactive string            `yaml:"interactive,omitempty"`
+	Fleets      map[string]string `yaml:"fleets,omitempty"`
+	Log         struct {
 		Level  string `yaml:"level"`
 		Format string `yaml:"format"`
 		Source bool   `yaml:"source"`
 		Color  string `yaml:"color"`
 	} `yaml:"log"`
-	UI struct {
-		Progress bool `yaml:"progress"`
-		Color    bool `yaml:"color"`
-	} `yaml:"ui"`
 }
 
 func newInitCmd() *cobra.Command {
@@ -77,8 +74,7 @@ func buildConfigFile(conf *Conf) configFile {
 	cfg.Log.Format = conf.Log.Format
 	cfg.Log.Source = conf.Log.Source
 	cfg.Log.Color = conf.Log.Color
-	cfg.UI.Progress = conf.UI.Progress
-	cfg.UI.Color = conf.UI.Color
+	cfg.Interactive = conf.Interactive
 	return cfg
 }
 

@@ -36,28 +36,39 @@ func Setup(root *cobra.Command) {
 		if err != nil {
 			return err
 		}
-		lg := NewLogger(conf)
-		slog.SetDefault(lg)
-		lg.Debug("starting", "version", Version, "build", Build, "date", BuildDate)
-
-		ctx := context.WithValue(cmd.Context(), confKey{}, conf)
 
 		planPath, _ := cmd.Flags().GetString("plan")
+		var plan *Plan
 		if planPath != "" {
-			plan, err := LoadPlan(planPath)
+			plan, err = LoadPlan(planPath)
 			if err != nil {
 				return fmt.Errorf("plan: %w", err)
 			}
-			ctx = ctxWithPlan(ctx, plan)
-
-			if !cmd.Flags().Changed("format") && plan.Format != "" {
-				sharedFormat = plan.Format
+			if plan.Interactive != "" && plan.Interactive != conf.Interactive {
+				conf.Interactive = plan.Interactive
+				conf.Console = newConsole(conf.Interactive)
+			}
+			if !cmd.Flags().Changed("json") && plan.JSON {
+				sharedJSON = plan.JSON
 			}
 			if !cmd.Flags().Changed("all") {
 				sharedAll = plan.All
 			}
 		}
 
+		if sharedJSON {
+			conf.Interactive = "never"
+			conf.Console = newConsole("never")
+		}
+
+		lg := NewLogger(conf)
+		slog.SetDefault(lg)
+		lg.Debug("starting", "version", Version, "build", Build, "date", BuildDate)
+
+		ctx := context.WithValue(cmd.Context(), confKey{}, conf)
+		if plan != nil {
+			ctx = ctxWithPlan(ctx, plan)
+		}
 		cmd.SetContext(ctx)
 		return nil
 	}

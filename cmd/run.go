@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"sort"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/depado/minifleet/internal/fleet"
 	"github.com/depado/minifleet/internal/git"
-	"github.com/depado/minifleet/internal/ui"
 )
 
 // runLine is a single output line captured during a run, tagged with its source.
@@ -32,25 +32,12 @@ type runResult struct {
 	Duration time.Duration `json:"duration"`
 }
 
-// runMode determines how output is displayed.
-type runMode int
-
-const (
-	modeAuto    runMode = iota // TTY → live blocks, non-TTY → summary
-	modeLive                   // force live block display
-	modeSummary                // force summary (capture + print per repo)
-)
-
 func newRunCmd() *cobra.Command {
 	var (
-		filters     Filters
-		summary     bool
-		progress    bool
-		summarySet  bool
-		progressSet bool
-		dryRun      bool
-		shell       string
-		blockLines  int
+		filters    Filters
+		dryRun     bool
+		shell      string
+		blockLines int
 	)
 
 	cmd := &cobra.Command{
@@ -59,16 +46,16 @@ func newRunCmd() *cobra.Command {
 		Long: `Run a shell command across every repository (or a filtered subset).
 Use -- to separate flags from the command.
 
-By default, live block output is used in a terminal (animated spinners,
-stdout dim, stderr red) and a summary is printed when piped. Override with
---summary or --progress. Use --format json for machine-readable output.
+By default, live block output is shown in a terminal (animated spinners,
+stdout dim, stderr red) and a summary is printed when piped. Use
+--interactive to override.
 
 Examples:
   minifleet run --language go -- "go test ./..."
   minifleet run --group backend -- "make lint"
-  minifleet run --progress --block-lines 5 -- "make build"
-  minifleet run --summary -- "git branch --show-current"
-  minifleet run --format json -- "make test"
+  minifleet run --block-lines 5 -- "make build"
+  minifleet run --interactive never -- "git branch --show-current"
+  minifleet run --json -- "make test"
   minifleet run --dry-run -- "rm -f foo.txt"
   minifleet run --plan plan.yml`,
 		Args: cobra.ArbitraryArgs,
@@ -89,12 +76,6 @@ Examples:
 				if !cmd.Flags().Changed("dry-run") {
 					dryRun = plan.DryRun
 				}
-				if !cmd.Flags().Changed("summary") {
-					summary = plan.Summary
-				}
-				if !cmd.Flags().Changed("progress") {
-					progress = plan.Progress
-				}
 				if !cmd.Flags().Changed("block-lines") && plan.BlockLines > 0 {
 					blockLines = plan.BlockLines
 				}
@@ -114,7 +95,7 @@ Examples:
 				return err
 			}
 			if len(targets) == 0 {
-				ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
+				conf.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 				return nil
 			}
 
@@ -137,45 +118,20 @@ Examples:
 			}
 
 			if totalCount == 0 {
-				ui.PrintDim("No repositories to run in.")
+				conf.PrintDim("No repositories to run in.")
 				return nil
 			}
 
 			if dryRun {
-				ui.PrintInfo(fmt.Sprintf("would run %q in %d repos via %s", input, totalCount, shell))
-				for _, p := range planned {
-					if len(planned) > 1 {
-						ui.DefaultPrint(fmt.Sprintf("[bold]%s[/] [dim](%s)[/]", p.target.Owner, p.target.Dir))
-					}
-					for _, t := range p.tasks {
-						ui.DefaultPrint(fmt.Sprintf("  [dim]%s[/]  [dim]%s[/]", t.RepoName, t.Dir))
-					}
-				}
+				conf.PrintInfo(fmt.Sprintf("would run %q in %d repos via %s", input, totalCount, shell))
 				return nil
 			}
 
-			jsonMode := sharedFormat == "json"
+			jsonMode := sharedJSON
 
 			// Determine display mode.
-			// --progress forces live, --summary forces summary.
-			// Default: live in TTY, summary when piped. JSON always wins.
-			mode := modeAuto
-			if progressSet && progress {
-				mode = modeLive
-			} else if summarySet && summary {
-				mode = modeSummary
-			}
-			useLive := false
-			if !jsonMode {
-				switch mode {
-				case modeLive:
-					useLive = true
-				case modeSummary:
-					useLive = false
-				default:
-					useLive = ui.DefaultConsole.IsTerminal()
-				}
-			}
+			// TTY → live blocks, pipe/dumb → summary. JSON always wins.
+			useLive := !jsonMode && conf.Console.IsTerminal()
 
 			var display *live.BlockDisplay
 			var liveDisplay *live.Live
@@ -186,7 +142,7 @@ Examples:
 					live.WithBlockSpinnerName("dots"),
 				)
 				liveDisplay = live.New(
-					ui.DefaultConsole,
+					conf.Console,
 					display,
 					live.WithAutoRefresh(true),
 					live.WithRefreshRate(15),
@@ -196,13 +152,13 @@ Examples:
 
 			executor := fleet.NewExecutor(fleet.ExecutorConfig{
 				Concurrency: conf.Concurrent,
-				Progress:    false,
+				Interactive: false,
 			})
 
 			var globalResult fleet.BulkResult
 			for _, p := range planned {
-				if len(planned) > 1 && !useLive && !jsonMode {
-					ui.DefaultPrint(fmt.Sprintf("[bold]%s[/] [dim](%s)[/]", p.target.Owner, p.target.Dir))
+				if !conf.Console.IsTerminal() {
+					slog.Info("running", "owner", p.target.Owner, "command", input, "repos", len(p.tasks))
 				}
 				result := executor.Run(ctx, p.tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
 					if !git.IsRepo(ctx, task.Dir) {
@@ -211,7 +167,10 @@ Examples:
 					return runOneRepo(ctx, task, input, shell, useLive, jsonMode, display)
 				})
 				if !useLive && !jsonMode {
-					printRunSummary(result)
+					printRunSummary(result, conf)
+				}
+				if !conf.Console.IsTerminal() {
+					slog.Info("ran", "owner", p.target.Owner, "succeeded", result.Succeeded, "skipped", result.Skipped, "failed", result.Failed, "elapsed", result.Elapsed.Round(time.Millisecond))
 				}
 				globalResult.Succeeded += result.Succeeded
 				globalResult.Skipped += result.Skipped
@@ -229,25 +188,18 @@ Examples:
 				return outputRunJSON(&globalResult)
 			}
 
-			ui.PrintInfo(fmt.Sprintf("Completed: %d succeeded, %d skipped, %d failed in %s",
-				globalResult.Succeeded, globalResult.Skipped, globalResult.Failed, globalResult.Elapsed.Round(time.Millisecond)))
+			if conf.Console.IsTerminal() {
+				conf.PrintInfo(fmt.Sprintf("Completed: %d succeeded, %d skipped, %d failed in %s",
+					globalResult.Succeeded, globalResult.Skipped, globalResult.Failed, globalResult.Elapsed.Round(time.Millisecond)))
+			}
 			return nil
 		},
 	}
 
 	addLocalFilterFlags(cmd, &filters)
-	cmd.Flags().BoolVar(&summary, "summary", false, "force summary mode (one block per repo with captured output)")
-	cmd.Flags().BoolVar(&progress, "progress", false, "force live block mode (animated spinners + streaming output)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would run; do not execute")
 	cmd.Flags().StringVar(&shell, "shell", "sh", "shell to invoke (default sh)")
 	cmd.Flags().IntVar(&blockLines, "block-lines", 3, "output lines per repo block in live mode")
-
-	// Track whether flags were explicitly set by the user.
-	cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		summarySet = cmd.Flags().Changed("summary")
-		progressSet = cmd.Flags().Changed("progress")
-		return nil
-	}
 
 	return cmd
 }
@@ -351,15 +303,24 @@ func outputRunJSON(result *fleet.BulkResult) error {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Repo < out[j].Repo })
 
-	data, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Print(string(data))
-	return nil
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
 }
 
-func printRunSummary(result *fleet.BulkResult) {
+func printRunSummary(result *fleet.BulkResult, conf *Conf) {
+	if !conf.Console.IsTerminal() {
+		for i := range result.Results {
+			r := &result.Results[i]
+			if res, ok := r.Payload.(*runResult); ok {
+				for _, l := range res.Lines {
+					slog.Info("output", "repo", r.Task.RepoName, "stream", l.Stream, "text", l.Text)
+				}
+			}
+		}
+		return
+	}
+
 	for i := range result.Results {
 		r := &result.Results[i]
 		res, _ := r.Payload.(*runResult)
@@ -368,28 +329,25 @@ func printRunSummary(result *fleet.BulkResult) {
 			dur = fmt.Sprintf(" [dim](%s)[/]", res.Duration.Round(time.Millisecond))
 		}
 
-		var line string
 		switch r.Status {
 		case fleet.StatusFailed:
 			exitCode := -1
 			if res != nil {
 				exitCode = res.ExitCode
 			}
-			line = fmt.Sprintf("[red]%s (exit %d)[/]%s", r.Task.RepoName, exitCode, dur)
+			conf.Print(fmt.Sprintf("[red]%s (exit %d)[/]%s", r.Task.RepoName, exitCode, dur))
 		case fleet.StatusSkipped:
-			line = fmt.Sprintf("[dim]%s ↷[/]%s", r.Task.RepoName, dur)
+			conf.Print(fmt.Sprintf("[dim]%s ↷[/]%s", r.Task.RepoName, dur))
 		default:
-			line = fmt.Sprintf("[green]%s[/]%s", r.Task.RepoName, dur)
+			conf.Print(fmt.Sprintf("[green]%s[/]%s", r.Task.RepoName, dur))
 		}
-		ui.DefaultPrint(line)
 
-		// Print captured lines: stdout dim, stderr red
 		if res != nil {
 			for _, l := range res.Lines {
 				if l.Stream == "stderr" {
-					ui.DefaultPrint(fmt.Sprintf("  [red]%s[/]", l.Text))
+					conf.Print(fmt.Sprintf("  [red]%s[/]", l.Text))
 				} else {
-					ui.DefaultPrint(fmt.Sprintf("  [dim]%s[/]", l.Text))
+					conf.Print(fmt.Sprintf("  [dim]%s[/]", l.Text))
 				}
 			}
 		}

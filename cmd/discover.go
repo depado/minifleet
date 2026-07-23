@@ -3,14 +3,15 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 
+	"github.com/depado/gorich/progress"
 	"github.com/spf13/cobra"
 
 	"github.com/depado/minifleet/internal/manifest"
 	"github.com/depado/minifleet/internal/provider"
 	"github.com/depado/minifleet/internal/provider/github"
-	"github.com/depado/minifleet/internal/ui"
 )
 
 func newDiscoverCmd() *cobra.Command {
@@ -63,12 +64,26 @@ func discoverOne(ctx context.Context, conf *Conf, prov provider.Provider, owner 
 		return fmt.Errorf("detect owner: %w", err)
 	}
 
-	repos, err := prov.ListRepos(ctx, owner, provider.ListOptions{
-		Visibility: f.Visibility,
-		IsOrg:      isOrg,
-	})
+	var repos []*provider.Repo
+	var p *progress.Progress
+	var tid progress.TaskID
+	if !conf.Console.IsTerminal() {
+		slog.Info("discovering", "owner", owner)
+	}
+	if conf.Console.IsTerminal() {
+		p = progress.New(
+			progress.WithColumns(
+				progress.NewSpinnerColumn(progress.WithSpinnerName("dots")),
+				progress.DescriptionColumn(),
+			),
+		)
+		p.Start(ctx)
+		tid = p.AddTask(fmt.Sprintf("Discovering repositories for %s", owner), nil)
+		defer p.Stop()
+	}
+	repos, err = prov.ListRepos(ctx, owner, provider.ListOptions{Visibility: f.Visibility, IsOrg: isOrg})
 	if err != nil {
-		return fmt.Errorf("list repos: %w", err)
+		return err
 	}
 
 	mf := loadFleetManifest(target)
@@ -78,7 +93,11 @@ func discoverOne(ctx context.Context, conf *Conf, prov provider.Provider, owner 
 		return err
 	}
 	if len(repos) == 0 {
-		ui.PrintDim(fmt.Sprintf("No repositories found for %s", owner))
+		if p != nil {
+			p.Done(tid, fmt.Sprintf("[dim]No repositories found for %s[/]", owner))
+		} else {
+			conf.PrintDim(fmt.Sprintf("No repositories found for %s", owner))
+		}
 		return nil
 	}
 
@@ -93,10 +112,14 @@ func discoverOne(ctx context.Context, conf *Conf, prov provider.Provider, owner 
 	}
 	if !noRegister {
 		if err := RegisterFleet(conf, owner, target.Dir); err != nil {
-			ui.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
+			conf.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
 		}
 	}
 
-	ui.PrintInfo(fmt.Sprintf("Discovered %d repositories for %s in %s", len(repos), owner, target.Dir))
+	if p != nil {
+		p.Done(tid, fmt.Sprintf("Discovered [bold]%d[/] repositories for [bold]%s[/] [dim]%s[/]", len(repos), owner, target.Dir))
+	} else {
+		conf.PrintInfo(fmt.Sprintf("Discovered %d repositories for %s %s", len(repos), owner, target.Dir))
+	}
 	return nil
 }

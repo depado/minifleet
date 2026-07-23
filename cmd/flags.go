@@ -3,8 +3,8 @@ package cmd
 import "github.com/spf13/cobra"
 
 var (
-	sharedFormat string
-	sharedAll    bool
+	sharedJSON bool
+	sharedAll  bool
 )
 
 func addConfigurationFlag(c *cobra.Command) {
@@ -30,12 +30,11 @@ func addFleetFlags(c *cobra.Command) {
 }
 
 func addUIFlags(c *cobra.Command) {
-	c.PersistentFlags().Bool("ui.progress", true, "show progress bars")
-	c.PersistentFlags().Bool("ui.color", true, "enable colored output")
+	c.PersistentFlags().String("interactive", "auto", "interactive mode: auto, always, never")
 }
 
 func addFormatFlag(c *cobra.Command) {
-	c.PersistentFlags().StringVarP(&sharedFormat, "format", "f", "table", "output format (table, json)")
+	c.PersistentFlags().BoolVar(&sharedJSON, "json", false, "output as JSON instead of table")
 }
 
 func addAllFlag(c *cobra.Command) {

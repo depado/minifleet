@@ -10,16 +10,15 @@ import (
 )
 
 type Plan struct {
-	Fleet      string   `yaml:"fleet,omitempty"`
-	All        bool     `yaml:"all,omitempty"`
-	Format     string   `yaml:"format,omitempty"`
-	Shell      string   `yaml:"shell,omitempty"`
-	Command    string   `yaml:"command,omitempty"`
-	BlockLines int      `yaml:"block_lines,omitempty"`
-	DryRun     bool     `yaml:"dry_run,omitempty"`
-	Summary    bool     `yaml:"summary,omitempty"`
-	Progress   bool     `yaml:"progress,omitempty"`
-	Filters    *Filters `yaml:"filters,omitempty"`
+	Fleet       string   `yaml:"fleet,omitempty"`
+	All         bool     `yaml:"all,omitempty"`
+	JSON        bool     `yaml:"json,omitempty"`
+	Shell       string   `yaml:"shell,omitempty"`
+	Command     string   `yaml:"command,omitempty"`
+	BlockLines  int      `yaml:"block_lines,omitempty"`
+	DryRun      bool     `yaml:"dry_run,omitempty"`
+	Interactive string   `yaml:"interactive,omitempty"`
+	Filters     *Filters `yaml:"filters,omitempty"`
 }
 
 type planKey struct{}

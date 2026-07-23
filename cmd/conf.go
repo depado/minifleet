@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/depado/gorich"
+	"github.com/depado/gorich/console"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
@@ -25,22 +27,18 @@ type LogConf struct {
 
 type GitHubConf struct {
 	Token string `mapstructure:"token"`
-	Host  string `mapstructure:"host"` // "github.com" (default) or a GitHub Enterprise host
+	Host  string `mapstructure:"host"`
 }
 
 type Conf struct {
-	Path       string            `mapstructure:"path"`       // use this directory as the fleet target, bypassing fleets
-	Shallow    bool              `mapstructure:"shallow"`    // use shallow clones
-	Concurrent int               `mapstructure:"concurrent"` // max concurrent operations
-	Fleets     map[string]string `mapstructure:"fleets"`     // owner → fleet directory
-	Log        LogConf           `mapstructure:"log"`
-	GitHub     GitHubConf        `mapstructure:"github"`
-	UI         UIConf            `mapstructure:"ui"`
-}
-
-type UIConf struct {
-	Progress bool `mapstructure:"progress"`
-	Color    bool `mapstructure:"color"`
+	Path        string            `mapstructure:"path"`
+	Shallow     bool              `mapstructure:"shallow"`
+	Concurrent  int               `mapstructure:"concurrent"`
+	Interactive string            `mapstructure:"interactive"`
+	Fleets      map[string]string `mapstructure:"fleets"`
+	Log         LogConf           `mapstructure:"log"`
+	GitHub      GitHubConf        `mapstructure:"github"`
+	Console     *console.Console
 }
 
 func configDir() string {
@@ -51,8 +49,43 @@ func configDir() string {
 	return filepath.Join(home, ".config", "minifleet")
 }
 
+func newConsole(interactive string) *console.Console {
+	switch strings.ToLower(interactive) {
+	case "always":
+		return console.New(console.WithForceTerminal(true))
+	case "never":
+		return console.New(console.WithForceTerminal(false))
+	default:
+		return console.New()
+	}
+}
+
 func ConfigPath() string {
 	return filepath.Join(configDir(), "config.yml")
+}
+
+func (c *Conf) PrintInfo(msg string) {
+	if c.Console.IsTerminal() {
+		gorich.Println("[cyan]→[/] " + msg)
+	} else {
+		slog.Info(msg)
+	}
+}
+
+func (c *Conf) PrintDim(msg string) {
+	if c.Console.IsTerminal() {
+		gorich.Println("[dim]" + msg + "[/]")
+	} else {
+		slog.Info(msg)
+	}
+}
+
+func (c *Conf) Print(msg string) {
+	if c.Console.IsTerminal() {
+		gorich.Println(msg)
+	} else {
+		slog.Info(msg)
+	}
 }
 
 func NewLogger(c *Conf) *slog.Logger {
@@ -129,5 +162,6 @@ func NewConf(cmd *cobra.Command) (*Conf, error) {
 		conf.Concurrent = runtime.NumCPU()
 	}
 
+	conf.Console = newConsole(conf.Interactive)
 	return conf, nil
 }

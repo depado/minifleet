@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 
 	"github.com/spf13/cobra"
@@ -41,31 +42,29 @@ func newStatusCmd() *cobra.Command {
 				return err
 			}
 			if len(targets) == 0 {
-				ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
+				conf.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 				return nil
 			}
 
 			var allRows []statusRow
 			for _, t := range targets {
-				rows, err := runStatusForFleet(ctx, conf, t, filters, sharedFormat)
+				rows, err := runStatusForFleet(ctx, conf, t, filters)
 				if err != nil {
 					return err
 				}
-				if sharedFormat == "json" {
+				if sharedJSON {
 					allRows = append(allRows, rows...)
 					continue
 				}
 				if len(rows) > 0 {
-					renderStatusTable(fleetTitle(t), rows)
+					renderStatusTable(fleetTitle(t), rows, conf)
 				}
 			}
 
-			if sharedFormat == "json" {
-				data, err := json.MarshalIndent(allRows, "", "  ")
-				if err != nil {
-					return err
-				}
-				fmt.Print(string(data))
+			if sharedJSON {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(allRows)
 			}
 			return nil
 		},
@@ -76,7 +75,7 @@ func newStatusCmd() *cobra.Command {
 	return cmd
 }
 
-func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters, format string) ([]statusRow, error) {
+func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters) ([]statusRow, error) {
 	tasks, err := reposForTarget(ctx, t, f)
 	if err != nil {
 		return nil, fmt.Errorf("scan %s: %w", t.Dir, err)
@@ -88,7 +87,7 @@ func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters
 
 	exec := fleet.NewExecutor(fleet.ExecutorConfig{
 		Concurrency: conf.Concurrent,
-		Progress:    false,
+		Interactive: conf.Console.IsTerminal(),
 	})
 
 	result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
@@ -112,7 +111,7 @@ func runStatusForFleet(ctx context.Context, conf *Conf, t fleetTarget, f Filters
 	return out, nil
 }
 
-func renderStatusTable(title string, rows []statusRow) {
+func renderStatusTable(title string, rows []statusRow, conf *Conf) {
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Repo < rows[j].Repo })
 
 	tbl := ui.NewTitledTable(title, "Repo", "Behind", "Ahead", "Dirty", "Untracked", "Stash", "Branch", "Remote")
@@ -156,7 +155,7 @@ func renderStatusTable(title string, rows []statusRow) {
 			remote,
 		)
 	}
-	ui.DefaultConsole.Render(tbl)
+	conf.Console.Render(tbl)
 }
 
 func countStr(n int) string {

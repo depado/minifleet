@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/depado/minifleet/internal/manifest"
 	"github.com/depado/minifleet/internal/provider"
 	"github.com/depado/minifleet/internal/provider/github"
-	"github.com/depado/minifleet/internal/ui"
 )
 
 func newSyncCmd() *cobra.Command {
@@ -36,11 +36,9 @@ func newSyncCmd() *cobra.Command {
 				return err
 			}
 
-			var results []fleet.BulkResult
-			collect := func(r *fleet.BulkResult) {
-				if sharedFormat == "json" {
-					results = append(results, *r)
-				}
+			var collected []fleetResult
+			collect := func(owner string, r *fleet.BulkResult) {
+				collected = append(collected, fleetResult{owner: owner, result: r})
 			}
 
 			if sharedAll || len(args) == 0 {
@@ -53,8 +51,8 @@ func newSyncCmd() *cobra.Command {
 				return err
 			}
 
-			if sharedFormat == "json" {
-				return outputSyncJSON(results)
+			if sharedJSON {
+				return outputSyncJSON(collected)
 			}
 			return nil
 		},
@@ -63,15 +61,13 @@ func newSyncCmd() *cobra.Command {
 	return cmd
 }
 
-func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, plan *Plan, collect func(*fleet.BulkResult)) error {
+func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, plan *Plan, collect func(string, *fleet.BulkResult)) error {
 	targets, err := planTargets(conf, plan, sharedAll)
 	if err != nil {
 		return err
 	}
 	if len(targets) == 0 {
-		if sharedFormat != "json" {
-			ui.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
-		}
+		conf.PrintDim("No fleet in the current directory and no known fleets. Run 'minifleet discover <owner>' first.")
 		return nil
 	}
 
@@ -83,7 +79,7 @@ func syncAll(ctx context.Context, conf *Conf, prov provider.Provider, plan *Plan
 	return nil
 }
 
-func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner string, collect func(*fleet.BulkResult)) error {
+func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner string, collect func(string, *fleet.BulkResult)) error {
 	target, _ := resolveFleet(conf, prov.Host(), owner)
 
 	if target.Dir == "" {
@@ -93,7 +89,7 @@ func syncOne(ctx context.Context, conf *Conf, prov provider.Provider, owner stri
 	return syncTarget(ctx, conf, prov, target, collect)
 }
 
-func syncTarget(ctx context.Context, conf *Conf, prov provider.Provider, target fleetTarget, collect func(*fleet.BulkResult)) error {
+func syncTarget(ctx context.Context, conf *Conf, prov provider.Provider, target fleetTarget, collect func(string, *fleet.BulkResult)) error {
 	mf := loadFleetManifest(target)
 
 	if mf == nil {
@@ -119,10 +115,17 @@ type syncRepoResult struct {
 	Error  string `json:"error,omitempty"`
 }
 
-func outputSyncJSON(results []fleet.BulkResult) error {
-	out := make([]syncJSONResult, 0, len(results))
-	for _, r := range results {
+type fleetResult struct {
+	owner  string
+	result *fleet.BulkResult
+}
+
+func outputSyncJSON(collected []fleetResult) error {
+	out := make([]syncJSONResult, 0, len(collected))
+	for _, fr := range collected {
+		r := fr.result
 		jr := syncJSONResult{
+			Owner:     fr.owner,
 			Total:     r.Total,
 			Succeeded: r.Succeeded,
 			Skipped:   r.Skipped,
@@ -148,12 +151,13 @@ func outputSyncJSON(results []fleet.BulkResult) error {
 		}
 		out = append(out, jr)
 	}
-	data, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return err
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if len(out) == 1 {
+		return enc.Encode(out[0])
 	}
-	fmt.Print(string(data))
-	return nil
+	return enc.Encode(out)
 }
 
 func setProtocol(idx map[string]*manifest.ManifestRepo, fullName, protocol string) {
@@ -162,7 +166,7 @@ func setProtocol(idx map[string]*manifest.ManifestRepo, fullName, protocol strin
 	}
 }
 
-func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t fleetTarget, mf *manifest.FleetManifest, collect func(*fleet.BulkResult)) error {
+func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t fleetTarget, mf *manifest.FleetManifest, collect func(string, *fleet.BulkResult)) error {
 	idx := mf.Index()
 	shallow := conf.Shallow
 
@@ -181,9 +185,13 @@ func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t
 		})
 	}
 
+	if !conf.Console.IsTerminal() {
+		slog.Info("syncing", "owner", t.Owner, "repos", len(tasks), "dir", t.Dir)
+	}
+
 	exec := fleet.NewExecutor(fleet.ExecutorConfig{
 		Concurrency: conf.Concurrent,
-		Progress:    conf.UI.Progress && sharedFormat != "json",
+		Interactive: conf.Console.IsTerminal(),
 		ProgressConfig: fleet.ProgressConfig{
 			Description: fmt.Sprintf("Syncing %s", t.Owner),
 		},
@@ -235,17 +243,24 @@ func syncFromManifest(ctx context.Context, conf *Conf, prov provider.Provider, t
 		}
 		if !mf.NoRegister {
 			if err := RegisterFleet(conf, t.Owner, t.Dir); err != nil {
-				if sharedFormat != "json" {
-					ui.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
-				}
+				conf.PrintDim(fmt.Sprintf("warning: could not register fleet in config: %v", err))
 			}
 		}
 	}
 
-	collect(result)
-
-	if sharedFormat != "json" {
-		printBulkSummary(result, false)
+	if !conf.Console.IsTerminal() {
+		slog.Info("synced",
+			"owner", t.Owner,
+			"repos", len(tasks),
+			"succeeded", result.Succeeded,
+			"skipped", result.Skipped,
+			"failed", result.Failed,
+			"elapsed", result.Elapsed.Round(time.Millisecond),
+		)
 	}
+
+	collect(t.Owner, result)
+
+	printBulkSummary(result, false, conf)
 	return nil
 }
