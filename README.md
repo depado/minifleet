@@ -50,16 +50,16 @@
 - **Discover**: Fetch repositories from the GitHub API, apply filters, and create or update a `fleet.yml` manifest. No cloning: separate API concerns from local operations.
 - **Sync**: Clone missing repos and pull existing ones based on the `fleet.yml` manifest. Purely local: no network calls, no token needed, works offline.
 - **Run across repos**: `run -- "<command>"` executes a shell command in every repository directory (or a filtered subset), with summary or live block output.
-- **Local-first listing**: `list` shows repos from the manifest when available, with an API fallback when no manifest exists. Output as table, JSON, or YAML.
+- **Local-first listing**: `list` shows repos from the manifest when available, with an API fallback when no manifest exists. Output as table or JSON.
 - **Local status dashboard**: See the state of all cloned repos: current branch, commits ahead/behind remote, uncommitted changes, stashed changes.
 - **Cross-repo PR dashboard**: List open pull requests across all repos with CI status (success/pending/failure) and review status (approved/changes/pending). Repo list comes from the manifest; PR data from the API.
-- **Unified filters**: Metadata filters (name, topic, language, labels, groups) apply to all commands. Local filters (file existence, git status) apply to `status` and `run`.
+- **Unified filters**: Metadata filters (name, topic, language, labels, groups) apply to all commands. Local filters (file existence, git status) apply to `status`, `run`, and `fetch`.
 - **Plan files**: Save filter presets and command options to a YAML file with `--plan`. CLI flags override plan values, making it easy to define and reuse common workflows.
 - **Per-directory fleets**: A `fleet.yml` lives alongside the repos it describes. Known fleets are registered in minifleet's configuration unless instructed otherwise.
 - **Target directory**: `--path <dir>` sets the working directory for all operations; disables known fleets lookups and overrides `--all`.
 - **GitHub Enterprise**: `--github.host <host>` retargets the API and clone URLs at a GHE instance.
 - **Concurrency built-in**: Parallel goroutines with a bounded worker pool, context-cancellable.
-- **gorich progress bars**: Live progress bars with spinners, per-repo status, and M-of-N counts.
+- **Interactive & non-interactive modes**: Progress bars and live blocks in terminals (`--interactive auto|always|never`); structured slog output with `--interactive never` or `--json`.
 - **Single binary**: Written in Go, only `git` on `$PATH` is required.
 
 ## Quick Start
@@ -200,25 +200,19 @@ Run `discover` again at any time to pick up new repos or refresh API-tracked met
 ### `minifleet fetch`
 
 ```
-minifleet fetch [flags]
+minifleet fetch [owner] [flags]
 ```
 
-Run `git fetch origin` in every cloned repository. Purely local: no API calls. Operates on the fleet in the current directory, or all known fleets otherwise. Accepts local filter flags.
+Run `git fetch origin --prune --tags` in every cloned repository. Purely local: no API calls. Without an owner, operates on the fleet in the current directory (or all known fleets). With an owner, fetches repositories for that specific fleet. Accepts local filter flags.
 
 ```
 Flags:
+  --force                    force fetch, overwriting diverged local tags
   --include-regex string     regex to match repo names
   --exclude-regex string     regex to exclude repo names
   --include stringArray      include repo by exact name (repeatable)
   --exclude stringArray      exclude repo by exact name (repeatable)
-  --topic stringArray        filter by topic (via manifest)
-  --include-archived         include archived repos
-  --include-forks            include forked repos
-  --language string          filter by primary language (via manifest)
-  --label stringArray        filter by manifest label
-  --group string             filter by manifest group
   --has-file stringArray     require file to exist in repo dir (repeatable, AND)
-  --if string                shell command; exit 0 = include repo
   --dirty                    only repos with uncommitted changes
   --ahead int                only repos with at least N ahead commits
   --behind int               only repos with at least N behind commits
@@ -231,11 +225,14 @@ Flags:
 # Fetch all repos in the current fleet
 minifleet fetch
 
-# Fetch with a target directory
-minifleet --path ~/work/depado fetch
+# Fetch a specific fleet
+minifleet fetch depado
 
 # Fetch only repos ahead of remote
 minifleet fetch --ahead 1
+
+# Fetch with a target directory
+minifleet --path ~/work/depado fetch
 ```
 
 ### `minifleet sync`
@@ -253,11 +250,6 @@ Clone missing repos and pull existing ones from the `fleet.yml` manifest. Purely
 3. `fleets[owner]` in `config.yml`
 
 After a successful sync, `fleets[owner]` is updated in `config.yml` so the fleet is discoverable from any directory.
-
-```
-Flags:
-  --format, -f string        table, json (default: table)
-```
 
 **Examples:**
 
@@ -281,7 +273,7 @@ minifleet --shallow sync depado
 minifleet list [owner] [flags]
 ```
 
-List repositories. Uses the local manifest when available; falls back to fetching from the GitHub API if no manifest exists. Without an owner, lists repos from the fleet in the current directory (or all known fleets). Output as `table` (default), `json`, or `yaml`.
+List repositories. Uses the local manifest when available; falls back to fetching from the GitHub API if no manifest exists. Without an owner, lists repos from the fleet in the current directory (or all known fleets). Output as table (default) or JSON.
 
 ```
 Flags:
@@ -296,7 +288,6 @@ Flags:
   --language string          filter by primary language
   --label stringArray        filter by manifest label
   --group string             filter by manifest group
-  --format, -f string        table, json, yaml (default: table)
   --limit int                max repos to list (0 = unlimited, default: 0)
 ```
 
@@ -308,10 +299,7 @@ minifleet list
 minifleet list depado --language go
 
 # JSON output
-minifleet list depado --format json | jq '.[] | .name'
-
-# Generate a seed manifest
-minifleet list depado --format yaml > fleet.yml
+minifleet list --json | jq '.[] | .name'
 ```
 
 ### `minifleet status`
@@ -340,7 +328,6 @@ Flags:
   --ahead int                only repos with at least N ahead commits
   --behind int               only repos with at least N behind commits
   --wip                      only repos with any uncommitted, unpushed, or unpulled changes
-  --format, -f string        table, json (default: table)
 ```
 
 ### `minifleet prs`
@@ -367,7 +354,6 @@ Flags:
   --language string          filter by primary language
   --label stringArray        filter by manifest label
   --group string             filter by manifest group
-  --format, -f string        table, json (default: table)
 ```
 
 ### `minifleet run`
@@ -396,15 +382,12 @@ Flags:
   --ahead int                only repos with at least N ahead commits
   --behind int               only repos with at least N behind commits
   --wip                      only repos with any uncommitted, unpushed, or unpulled changes
-  --summary                  force summary mode (one line per repo after completion)
-  --progress                 force live block mode (animated spinners + streaming output)
   --block-lines int          output lines per repo block in live mode (default: 3)
   --dry-run                  print what would run; do not execute
   --shell string             shell to invoke (default: sh)
-  --format string            output format: table (auto), json
 ```
 
-Global persistent flags (`--plan`, `--format`, `--all`) are available on every command.
+`--json` is a persistent global flag. Use `--interactive` to control display mode (auto/always/never).
 
 Use `--` to separate flags from the command itself.
 
@@ -417,8 +400,8 @@ minifleet run -- "go test ./..."
 # Lint only backend repos
 minifleet run --group backend -- "make lint"
 
-# Stream output of a build (force live blocks)
-minifleet run --progress --language go -- "make build"
+# Stream output of a build
+minifleet run --block-lines 5 --language go -- "make build"
 
 # Cross-repo code search
 minifleet run -- "grep -r 'TODO' ."
@@ -435,13 +418,14 @@ minifleet run --dry-run --include-regex "^old-" -- "rm -f .env.local"
 # Load filters and command from a plan file
 minifleet run --plan plan.yml
 
-# Plan + CLI flag override
-minifleet run --plan go-checks.yml --group backend --dry-run
+# JSON output
+minifleet run --json -- "git rev-parse HEAD"
+
+# Non-interactive (slog output)
+minifleet run --interactive never -- "make test"
 ```
 
-**Summary mode** (`--summary`): one line per repo (`✓`/`✗ exit N` + duration); failed repos also print their captured stderr and stdout. This is the default when stdout is not a terminal (piped or redirected).
-
-**Live block mode** (`--progress`, or TTY default): when stdout is a terminal, each repo gets a growing block that updates in place:
+**Live block mode** (TTY default): when stdout is a terminal, each repo gets a growing block that updates in place:
 
 ```
 → articles
@@ -452,7 +436,7 @@ minifleet run --plan go-checks.yml --group backend --dry-run
   5ed469d fix(deps): update module...
 ```
 
-When a repo finishes, its header flips to `✓ repo (elapsed)` (or `✗ exit N repo (elapsed)` on failure) and the last `--block-lines` output lines stay visible underneath. New blocks are appended as repos are picked up. Older blocks scroll off the top when the display exceeds terminal height. In a non-terminal (piped, CI), falls back to `repo › line` prefixes.
+When a repo finishes, its header flips to `✓ repo (elapsed)` (or `✗ exit N repo (elapsed)` on failure) and the last `--block-lines` output lines stay visible underneath. New blocks are appended as repos are picked up. Older blocks scroll off the top when the display exceeds terminal height. In a non-terminal (piped, CI, `--interactive never`), per-repo status and captured output is written to stderr via slog.
 
 ### `minifleet init`
 
@@ -512,7 +496,7 @@ All commands treat `<dir>` as the fleet directory: a `fleet.yml` is read if pres
 
 ## Filters
 
-Filters fall into two categories. Every command that queries the API or filters repos accepts the metadata filters. The local filters are only available on commands that operate on cloned repositories (`status`, `run`).
+Filters fall into two categories. Every command that queries the API or filters repos accepts the metadata filters. The local filters are only available on commands that operate on cloned repositories (`status`, `run`, `fetch`).
 
 ### Metadata filters (applies to `discover`, `list`, `prs`, `status`, `run`)
 
@@ -532,7 +516,7 @@ These filters work against API responses or manifest data, so they apply both on
 | `--label`            | stringArray | Match on manifest labels: `tier=1` (exact) or `tier` (any value). AND across labels. |
 | `--group`            | string      | Limit to repos in a manifest group                                                   |
 
-### Local filters (applies to `status`, `run` only)
+### Local filters (applies to `status`, `run`, `fetch`)
 
 These inspect the local checkout and are ignored by commands that work against the API:
 
@@ -585,17 +569,14 @@ Any command that accepts filters supports `--plan`. Fields unrelated to a comman
 # Fleet targeting (optional: falls back to context)
 fleet: my-org # target a specific fleet from fleets
 all: true # operate on all known fleets
-
-# Output (optional)
-format: json # table, json, yaml
+json: true # output as JSON
 
 # run-specific (optional: ignored by other commands)
 shell: bash # shell to invoke (default: sh)
 command: "make test" # command to execute (no -- args needed)
 block_lines: 5 # output lines per block in live mode
 dry_run: false # print what would run; don't execute
-summary: false # force summary mode
-progress: true # force live block mode
+interactive: never # auto, always, never
 
 # Filters (optional: all 15 filter fields are supported)
 filters:
@@ -637,7 +618,7 @@ minifleet run --plan go-checks.yml --group backend
 minifleet run --plan go-checks.yml --dry-run
 
 # Use the same filters with status (command & shell are ignored)
-minifleet status --plan go-checks.yml --format json
+minifleet status --plan go-checks.yml --json
 
 # Plan targeting a specific fleet
 minifleet run --plan go-checks.yml  # resolves fleet from context
@@ -646,7 +627,7 @@ minifleet run --plan go-checks.yml  # resolves fleet from context
 
 ### How it works
 
-1. `--plan <file>` is a persistent flag on every command (like `--format` and `--all`)
+1. `--plan <file>` is a persistent flag on every command (like `--json` and `--all`)
 2. The YAML is loaded once in the pre-run hook and stored in context
 3. For each filter, command option, or fleet targeting field: the plan provides a default that CLI flags can override
 4. `cmd.Flags().Changed("flag-name")` determines whether the user set the flag: if not, the plan value is used
@@ -737,9 +718,7 @@ log:
   source: false
   color: auto # auto, always, never
 
-ui:
-  progress: true
-  color: true
+interactive: auto # auto, always, never
 ```
 
 ### Reference
@@ -755,8 +734,7 @@ ui:
 | `log.format`   | `MINIFLEET_LOG_FORMAT`  | `text`       | `json` or `text`                                                  |
 | `log.source`   | `MINIFLEET_LOG_SOURCE`  | `false`      | Include source file in logs                                       |
 | `log.color`    | `MINIFLEET_LOG_COLOR`   | `auto`       | `auto`, `always`, `never`                                         |
-| `ui.progress`  | `MINIFLEET_UI_PROGRESS` | `true`       | Show progress bars                                                |
-| `ui.color`     | `MINIFLEET_UI_COLOR`    | `true`       | Enable colored output                                             |
+| `interactive`  | `MINIFLEET_INTERACTIVE` | `auto`       | `auto`, `always`, `never`                                         |
 
 ## Concurrency
 
