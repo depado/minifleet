@@ -2,7 +2,7 @@
 
 export CGO_ENABLED=0
 export VERSION=$(shell git describe --abbrev=0 --tags 2> /dev/null || echo "0.1.0")
-export SUFFIX=$(shell git describe --exact-match > /dev/null 2>&1 || echo "-dev")
+export SUFFIX=$(shell git describe --exact-match --tags > /dev/null 2>&1 || echo "-dev")
 export BUILD=$(shell git rev-parse HEAD 2> /dev/null || echo "undefined")
 export BUILDDATE=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BINARY=minifleet
