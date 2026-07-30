@@ -30,5 +30,6 @@ func run(ctx context.Context, dir string, args ...string) (string, error) {
 func IsRepo(ctx context.Context, dir string) bool {
 	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--git-dir")
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	return cmd.Run() == nil
 }

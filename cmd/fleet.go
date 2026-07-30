@@ -138,7 +138,7 @@ func fleetTitle(t fleetTarget) string {
 
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
-	return err == nil
+	return !os.IsNotExist(err)
 }
 
 // expandPath expands a leading ~/ to the user's home directory. Other paths

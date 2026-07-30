@@ -41,12 +41,15 @@ type Conf struct {
 	Console     *console.Console
 }
 
-func configDir() string {
+func configDir() (string, error) {
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "minifleet")
+		return filepath.Join(dir, "minifleet"), nil
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "minifleet")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("home dir: %w", err)
+	}
+	return filepath.Join(home, ".config", "minifleet"), nil
 }
 
 func newConsole(interactive string) *console.Console {
@@ -60,8 +63,12 @@ func newConsole(interactive string) *console.Console {
 	}
 }
 
-func ConfigPath() string {
-	return filepath.Join(configDir(), "config.yml")
+func ConfigPath() (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.yml"), nil
 }
 
 func (c *Conf) PrintInfo(msg string) {
@@ -140,9 +147,13 @@ func NewConf(cmd *cobra.Command) (*Conf, error) {
 	if path := v.GetString("conf"); path != "" {
 		v.SetConfigFile(path)
 	} else {
+		dir, err := configDir()
+		if err != nil {
+			return nil, err
+		}
 		v.SetConfigName("config")
 		v.SetConfigType("yml")
-		v.AddConfigPath(configDir())
+		v.AddConfigPath(dir)
 		v.AddConfigPath(".")
 	}
 

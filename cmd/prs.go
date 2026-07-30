@@ -153,42 +153,7 @@ func execPRs(ctx context.Context, conf *Conf, prov provider.Provider, owner stri
 		slog.Info("listing prs", "owner", owner, "repos", len(tasks))
 	}
 
-	result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
-		prs, err := prov.ListPullRequests(ctx, owner, task.RepoName, provider.ListPROptions{
-			State: state,
-			Sort:  "updated",
-			Limit: 0,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		if author != "" {
-			filtered := prs[:0]
-			for _, pr := range prs {
-				if pr.Author == author {
-					filtered = append(filtered, pr)
-				}
-			}
-			prs = filtered
-		}
-
-		if noDraft {
-			filtered := prs[:0]
-			for _, pr := range prs {
-				if !pr.Draft {
-					filtered = append(filtered, pr)
-				}
-			}
-			prs = filtered
-		}
-
-		if len(prs) == 0 {
-			return nil, &fleet.SkipError{Reason: "no matching PRs"}
-		}
-
-		return prs, nil
-	})
+	result := exec.Run(ctx, tasks, listAndFilterPRs(prov, owner, state, author, noDraft))
 
 	if !conf.Console.IsTerminal() {
 		slog.Info("listed prs", "owner", owner, "repos", len(tasks), "elapsed", result.Elapsed.Round(time.Millisecond))
@@ -209,7 +174,13 @@ func execPRsRows(ctx context.Context, conf *Conf, prov provider.Provider, owner 
 		},
 	})
 
-	result := exec.Run(ctx, tasks, func(ctx context.Context, task fleet.RepoTask) (any, error) {
+	result := exec.Run(ctx, tasks, listAndFilterPRs(prov, owner, state, author, noDraft))
+
+	return prRowsFromResult(result), nil
+}
+
+func listAndFilterPRs(prov provider.Provider, owner, state, author string, noDraft bool) fleet.Operation {
+	return func(ctx context.Context, task fleet.RepoTask) (any, error) {
 		prs, err := prov.ListPullRequests(ctx, owner, task.RepoName, provider.ListPROptions{
 			State: state,
 			Sort:  "updated",
@@ -218,35 +189,34 @@ func execPRsRows(ctx context.Context, conf *Conf, prov provider.Provider, owner 
 		if err != nil {
 			return nil, err
 		}
-
-		if author != "" {
-			filtered := prs[:0]
-			for _, pr := range prs {
-				if pr.Author == author {
-					filtered = append(filtered, pr)
-				}
-			}
-			prs = filtered
-		}
-
-		if noDraft {
-			filtered := prs[:0]
-			for _, pr := range prs {
-				if !pr.Draft {
-					filtered = append(filtered, pr)
-				}
-			}
-			prs = filtered
-		}
-
+		prs = filterPRs(prs, author, noDraft)
 		if len(prs) == 0 {
 			return nil, &fleet.SkipError{Reason: "no matching PRs"}
 		}
-
 		return prs, nil
-	})
+	}
+}
 
-	return prRowsFromResult(result), nil
+func filterPRs(prs []*provider.PullRequest, author string, noDraft bool) []*provider.PullRequest {
+	if author != "" {
+		filtered := prs[:0]
+		for _, pr := range prs {
+			if pr.Author == author {
+				filtered = append(filtered, pr)
+			}
+		}
+		prs = filtered
+	}
+	if noDraft {
+		filtered := prs[:0]
+		for _, pr := range prs {
+			if !pr.Draft {
+				filtered = append(filtered, pr)
+			}
+		}
+		prs = filtered
+	}
+	return prs
 }
 
 func prRowsFromResult(result *fleet.BulkResult) []prRow {

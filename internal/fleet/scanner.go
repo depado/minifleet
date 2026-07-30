@@ -114,10 +114,10 @@ func isIgnored(set map[string]struct{}, shortName, fullName string) bool {
 }
 
 func lastSegment(fullName string) string {
-	if i := strings.LastIndexByte(fullName, '/'); i >= 0 {
-		return fullName[i+1:]
+	if strings.LastIndexByte(fullName, '/') < 0 {
+		return ""
 	}
-	return ""
+	return ShortName(fullName)
 }
 
 func ShortName(fullName string) string {

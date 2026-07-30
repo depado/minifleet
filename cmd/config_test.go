@@ -19,7 +19,7 @@ func TestSaveConf(t *testing.T) {
 			t.Fatalf("SaveConf: %v", err)
 		}
 
-		data, err := os.ReadFile(ConfigPath())
+		data, err := os.ReadFile(mustConfigPath(t))
 		if err != nil {
 			t.Fatalf("read config: %v", err)
 		}
@@ -41,7 +41,7 @@ func TestSaveConf(t *testing.T) {
 			t.Errorf("Concurrent = %d, want 9", cfg.Concurrent)
 		}
 
-		info, err := os.Stat(ConfigPath())
+		info, err := os.Stat(mustConfigPath(t))
 		if err != nil {
 			t.Fatalf("stat config: %v", err)
 		}
@@ -58,7 +58,7 @@ func TestSaveConf(t *testing.T) {
 			t.Fatalf("SaveConf: %v", err)
 		}
 
-		data, err := os.ReadFile(ConfigPath())
+		data, err := os.ReadFile(mustConfigPath(t))
 		if err != nil {
 			t.Fatalf("read config: %v", err)
 		}
@@ -86,7 +86,7 @@ func TestSaveConf(t *testing.T) {
 			t.Fatalf("SaveConf: %v", err)
 		}
 
-		data, err := os.ReadFile(ConfigPath())
+		data, err := os.ReadFile(mustConfigPath(t))
 		if err != nil {
 			t.Fatalf("read config: %v", err)
 		}
@@ -99,4 +99,13 @@ func TestSaveConf(t *testing.T) {
 			t.Errorf("GitHub.Token = %q, want %q", cfg.GitHub.Token, "on-disk")
 		}
 	})
+}
+
+func mustConfigPath(t *testing.T) string {
+	t.Helper()
+	p, err := ConfigPath()
+	if err != nil {
+		t.Fatalf("ConfigPath: %v", err)
+	}
+	return p
 }

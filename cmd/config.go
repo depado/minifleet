@@ -51,7 +51,9 @@ func newInitCmd() *cobra.Command {
 			if err := writeConfigFile(buildConfigFile(conf)); err != nil {
 				return err
 			}
-			fmt.Printf("Config written to %s\n", ConfigPath())
+			if p, err := ConfigPath(); err == nil {
+				fmt.Printf("Config written to %s\n", p)
+			}
 			return nil
 		},
 	}
@@ -85,11 +87,15 @@ func writeConfigFile(cfg configFile) error {
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	dir := filepath.Dir(ConfigPath())
+	p, err := ConfigPath()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(p)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
-	return os.WriteFile(ConfigPath(), append([]byte("# minifleet configuration\n"), data...), 0o600)
+	return os.WriteFile(p, append([]byte("# minifleet configuration\n"), data...), 0o600)
 }
 
 // SaveConf persists conf to disk with 0600 perms, preserving all fields.
@@ -100,7 +106,11 @@ func writeConfigFile(cfg configFile) error {
 func SaveConf(conf *Conf) error {
 	cfg := buildConfigFile(conf)
 	cfg.GitHub.Token = ""
-	if existing, err := os.ReadFile(ConfigPath()); err == nil {
+	p, err := ConfigPath()
+	if err != nil {
+		return err
+	}
+	if existing, err := os.ReadFile(p); err == nil {
 		var prev configFile
 		if yaml.Unmarshal(existing, &prev) == nil {
 			cfg.GitHub.Token = prev.GitHub.Token
@@ -124,7 +134,9 @@ func RegisterFleet(conf *Conf, owner, dir string) error {
 }
 
 func printConfig(conf *Conf) {
-	fmt.Printf("Config path:   %s\n", ConfigPath())
+	if p, err := ConfigPath(); err == nil {
+		fmt.Printf("Config path:   %s\n", p)
+	}
 	fmt.Printf("Concurrency:   %d\n", conf.Concurrent)
 	fmt.Printf("GitHub host:   %s\n", conf.GitHub.Host)
 	fmt.Printf("Log level:     %s\n", conf.Log.Level)

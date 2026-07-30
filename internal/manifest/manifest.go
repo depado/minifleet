@@ -63,14 +63,6 @@ func Save(mf *FleetManifest, path string) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-func Generate(repos []*provider.Repo, owner string) *FleetManifest {
-	return &FleetManifest{
-		Version: "1",
-		Owner:   owner,
-		Repos:   convertRepos(repos),
-	}
-}
-
 // Merge refreshes API-tracked fields; user-set fields (Labels, Protocol,
 // Ignored) are preserved from the existing manifest for repos that already
 // exist, and default to zero for new repos.
@@ -144,20 +136,4 @@ func (mf *FleetManifest) GroupRepos(group string) map[string]struct{} {
 		set[n] = struct{}{}
 	}
 	return set
-}
-
-func convertRepos(repos []*provider.Repo) []ManifestRepo {
-	result := make([]ManifestRepo, len(repos))
-	for i, r := range repos {
-		result[i] = ManifestRepo{
-			FullName:  r.FullName,
-			Topics:    r.Topics,
-			Language:  r.Language,
-			Archived:  r.Archived,
-			Fork:      r.Fork,
-			Private:   r.Private,
-			UpdatedAt: r.UpdatedAt,
-		}
-	}
-	return result
 }

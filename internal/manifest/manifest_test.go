@@ -3,7 +3,6 @@ package manifest
 import (
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/depado/minifleet/internal/provider"
 )
@@ -216,47 +215,6 @@ func TestGroupRepos(t *testing.T) {
 		got := mf3.GroupRepos("any")
 		if got != nil {
 			t.Errorf("got %v, want nil", got)
-		}
-	})
-}
-
-func TestGenerate(t *testing.T) {
-	t.Run("sets version owner and API fields", func(t *testing.T) {
-		now := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
-		api := []*provider.Repo{
-			{Name: "svc", FullName: "o/svc", Language: "Go", Archived: false, Fork: false, Private: true, Topics: []string{"go"}, UpdatedAt: now},
-		}
-		got := Generate(api, "o")
-		if got.Version != "1" {
-			t.Errorf("Version: got %q, want 1", got.Version)
-		}
-		if got.Owner != "o" {
-			t.Errorf("Owner: got %q, want o", got.Owner)
-		}
-		if len(got.Repos) != 1 {
-			t.Fatalf("want 1 repo, got %d", len(got.Repos))
-		}
-		r := got.Repos[0]
-		if r.FullName != "o/svc" {
-			t.Errorf("FullName: got %q, want o/svc", r.FullName)
-		}
-		if r.Language != "Go" {
-			t.Errorf("Language: got %q, want Go", r.Language)
-		}
-		if r.Archived {
-			t.Errorf("Archived: got true, want false")
-		}
-		if r.Fork {
-			t.Errorf("Fork: got true, want false")
-		}
-		if !r.Private {
-			t.Errorf("Private: got false, want true")
-		}
-		if !reflect.DeepEqual(r.Topics, []string{"go"}) {
-			t.Errorf("Topics: got %v, want [go]", r.Topics)
-		}
-		if !r.UpdatedAt.Equal(now) {
-			t.Errorf("UpdatedAt: got %v, want %v", r.UpdatedAt, now)
 		}
 	})
 }

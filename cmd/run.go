@@ -155,6 +155,7 @@ Examples:
 				Interactive: false,
 			})
 
+			runStart := time.Now()
 			var globalResult fleet.BulkResult
 			for _, p := range planned {
 				if !conf.Console.IsTerminal() {
@@ -176,8 +177,8 @@ Examples:
 				globalResult.Skipped += result.Skipped
 				globalResult.Failed += result.Failed
 				globalResult.Results = append(globalResult.Results, result.Results...)
-				globalResult.Elapsed += result.Elapsed
 			}
+			globalResult.Elapsed = time.Since(runStart)
 
 			if liveDisplay != nil {
 				time.Sleep(200 * time.Millisecond)
