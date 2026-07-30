@@ -26,5 +26,3 @@ jobs:
     uses: depado/github-actions/.github/workflows/docker.yml@main
     with:
       platforms: linux/amd64,linux/arm64
-    secrets:
-      cleanup-token: ${{ secrets.PAT_DELETE_PACKAGES }}
